@@ -80,10 +80,13 @@ export async function GET(req: Request) {
 
     // 6. Auto-fetch odds
     const oddsMap = await enrichWithOdds(rawPredictions)
-    const predictions: Prediction[] = rawPredictions.map(p => ({
+    const predictionsWithOdds: Prediction[] = rawPredictions.map(p => ({
       ...p,
       odds: oddsMap.get(`${p.homeTeam}|${p.awayTeam}`) ?? undefined,
     }))
+
+    // Filter out picks where odds are too low to be worth betting (< 1.05)
+    const predictions = predictionsWithOdds.filter(p => !p.odds || p.odds >= 1.05)
 
     // 7. Save to Supabase
     const rows = predictions.map(pred => ({

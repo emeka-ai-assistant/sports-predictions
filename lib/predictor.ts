@@ -152,6 +152,14 @@ function analyseMatch(
     }
   }
 
+  // ── Expected goal margin (used for handicap decisions) ────────────────
+  let expectedGoalMargin = 0
+  if (home2 && away2 && home2.playedGames > 0 && away2.playedGames > 0) {
+    const homeXG = (home2.goalsFor / home2.playedGames + away2.goalsAgainst / away2.playedGames) / 2
+    const awayXG = (away2.goalsFor / away2.playedGames + home2.goalsAgainst / home2.playedGames) / 2
+    expectedGoalMargin = Math.abs(homeXG - awayXG)
+  }
+
   // ── Final pick decision ───────────────────────────────────────
   let pick: PickType
   let pickLabel: string
@@ -162,31 +170,71 @@ function analyseMatch(
     pickLabel = `${fixture.homeTeam.name} 1UP`
     confidence = Math.min(92, 58 + homeScore - awayScore)
     reasoning.push(`${fixture.homeTeam.name} expected to take and hold the lead`)
+
   } else if (dominantAway) {
     pick = 'ONE_UP'
     pickLabel = `${fixture.awayTeam.name} 1UP`
     confidence = Math.min(90, 56 + awayScore - homeScore)
     reasoning.push(`${fixture.awayTeam.name} expected to take and hold the lead`)
+
   } else if (bttsSignal >= 14 && Math.abs(homeScore - awayScore) <= 10) {
     pick = 'BTTS'
     pickLabel = 'Both Teams to Score'
     confidence = Math.min(88, 52 + bttsSignal)
+
   } else if (over25Signal >= 14 && Math.abs(homeScore - awayScore) <= 8) {
     pick = 'OVER_2_5'
     pickLabel = 'Over 2.5 Goals'
     confidence = Math.min(86, 50 + over25Signal)
+
   } else if (over15Signal >= 12 && Math.abs(homeScore - awayScore) <= 6) {
     pick = 'OVER_1_5'
     pickLabel = 'Over 1.5 Goals'
     confidence = Math.min(88, 54 + over15Signal)
+
   } else if (strongerHome) {
-    pick = 'HOME_WIN'
-    pickLabel = `${fixture.homeTeam.name} to Win`
-    confidence = Math.min(88, 44 + (homeScore - awayScore))
+    // Strong home advantage — if expected margin > 1.2, HANDICAP +2 for away is safer
+    const diff = homeScore - awayScore
+    if (expectedGoalMargin >= 1.2 && diff >= 16) {
+      pick = 'HANDICAP_PLUS_2'
+      pickLabel = `${fixture.awayTeam.name} +2`
+      confidence = Math.min(83, 50 + Math.floor(diff / 2))
+      reasoning.push(`${fixture.homeTeam.name} favoured but unlikely to win by 3+ goals`)
+    } else {
+      pick = 'HOME_WIN'
+      pickLabel = `${fixture.homeTeam.name} to Win`
+      confidence = Math.min(88, 44 + diff)
+    }
+
+  } else if (homeScore > awayScore + 4) {
+    // Moderate home advantage — back away team with +1 (they just need to not lose by 2+)
+    const diff = homeScore - awayScore
+    pick = 'HANDICAP_PLUS_1'
+    pickLabel = `${fixture.awayTeam.name} +1`
+    confidence = Math.min(82, 58 + Math.floor(diff / 2))
+    reasoning.push(`${fixture.homeTeam.name} slight edge but away unlikely to lose by 2+ goals`)
+
   } else if (strongerAway) {
-    pick = 'AWAY_WIN'
-    pickLabel = `${fixture.awayTeam.name} to Win`
-    confidence = Math.min(86, 42 + (awayScore - homeScore))
+    const diff = awayScore - homeScore
+    if (expectedGoalMargin >= 1.2 && diff >= 16) {
+      pick = 'HANDICAP_PLUS_2'
+      pickLabel = `${fixture.homeTeam.name} +2`
+      confidence = Math.min(83, 50 + Math.floor(diff / 2))
+      reasoning.push(`${fixture.awayTeam.name} favoured but unlikely to win by 3+ goals`)
+    } else {
+      pick = 'AWAY_WIN'
+      pickLabel = `${fixture.awayTeam.name} to Win`
+      confidence = Math.min(86, 42 + diff)
+    }
+
+  } else if (awayScore > homeScore + 4) {
+    // Moderate away advantage — back home team with +1
+    const diff = awayScore - homeScore
+    pick = 'HANDICAP_PLUS_1'
+    pickLabel = `${fixture.homeTeam.name} +1`
+    confidence = Math.min(82, 58 + Math.floor(diff / 2))
+    reasoning.push(`${fixture.awayTeam.name} slight edge but home unlikely to lose by 2+ goals`)
+
   } else if (homeScore >= awayScore) {
     pick = 'HOME_WIN'
     pickLabel = `${fixture.homeTeam.name} to Win`

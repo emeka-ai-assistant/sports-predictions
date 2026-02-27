@@ -5,8 +5,10 @@ export type PickType =
   | 'OVER_1_5'
   | 'OVER_2_5'
   | 'BTTS'
-  | 'ONE_UP'    // Team leads by 1+ goal at ANY point = WIN
-  | 'TWO_UP'    // Team leads by 2+ goals at ANY point = WIN
+  | 'ONE_UP'           // Team leads by 1+ goal at ANY point = WIN
+  | 'TWO_UP'           // Team leads by 2+ goals at ANY point = WIN
+  | 'HANDICAP_PLUS_1'  // Team gets +1 goal start. WIN if they win or draw. LOSE if they lose by 2+
+  | 'HANDICAP_PLUS_2'  // Team gets +2 goal start. WIN if they win, draw or lose by 1. LOSE if they lose by 3+
 
 export type ResultType = 'WIN' | 'LOSS' | 'VOID'
 

@@ -18,8 +18,10 @@ const PICK_STYLES: Record<string, { bg: string; label: string; icon: string }> =
   OVER_1_5:  { bg: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40',       label: '⚡ Over 1.5',   icon: '⚡' },
   OVER_2_5:  { bg: 'bg-orange-500/20 text-orange-300 border-orange-500/40', label: '🔥 Over 2.5',   icon: '🔥' },
   BTTS:      { bg: 'bg-pink-500/20 text-pink-300 border-pink-500/40',       label: '⚽ BTTS',        icon: '⚽' },
-  ONE_UP:    { bg: 'bg-green-500/20 text-green-300 border-green-500/40',    label: '☝️ 1UP',         icon: '☝️' },
-  TWO_UP:    { bg: 'bg-teal-500/20 text-teal-300 border-teal-500/40',       label: '✌️ 2UP',         icon: '✌️' },
+  ONE_UP:           { bg: 'bg-green-500/20 text-green-300 border-green-500/40',       label: '☝️ 1UP',  icon: '☝️' },
+  TWO_UP:           { bg: 'bg-teal-500/20 text-teal-300 border-teal-500/40',         label: '✌️ 2UP',  icon: '✌️' },
+  HANDICAP_PLUS_1:  { bg: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40',   label: '🛡️ +1',  icon: '🛡️' },
+  HANDICAP_PLUS_2:  { bg: 'bg-violet-500/20 text-violet-300 border-violet-500/40',   label: '🛡️ +2',  icon: '🛡️' },
 }
 
 const RESULT_STYLES: Record<string, string> = {
@@ -61,6 +63,12 @@ function PickTooltip({ pick }: { pick: string }) {
   )
   if (pick === 'OVER_2_5') return (
     <span className="text-xs text-gray-500">3+ total goals in the match</span>
+  )
+  if (pick === 'HANDICAP_PLUS_1') return (
+    <span className="text-xs text-gray-500">+1 head start — WIN if win or draw, LOSE if lose by 2+</span>
+  )
+  if (pick === 'HANDICAP_PLUS_2') return (
+    <span className="text-xs text-gray-500">+2 head start — WIN if win, draw or lose by 1. LOSE if lose by 3+</span>
   )
   return null
 }
