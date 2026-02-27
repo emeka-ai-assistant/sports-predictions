@@ -200,7 +200,7 @@ function analyseMatch(
   return { pick, pickLabel, confidence, reasoning: reasoning.slice(0, 4) }
 }
 
-const MIN_CONFIDENCE = 85   // Only show picks we're genuinely confident about
+const MIN_CONFIDENCE = 65   // Minimum confidence to show a pick
 const TARGET_PICKS = 5      // Aim for 4–5 picks per day
 
 export function selectTopPicks(

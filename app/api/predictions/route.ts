@@ -66,7 +66,7 @@ export async function GET() {
     if (picks.length === 0) {
       return NextResponse.json({
         predictions: [],
-        message: `Fixtures found but none cleared the 85% confidence threshold today. Check back tomorrow or add picks manually.`,
+        message: `Fixtures found but none cleared the 65% confidence threshold today. Check back tomorrow or add picks manually.`,
       })
     }
 
