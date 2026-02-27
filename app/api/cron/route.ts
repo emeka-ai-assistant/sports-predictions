@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
 
     if (picks.length === 0) {
       return NextResponse.json({
-        ok: true, message: 'Fixtures found but none cleared 65% confidence', date: today,
+        ok: true, message: 'Fixtures found but none cleared 75% confidence', date: today,
         fixturesFound: fixtures.length, durationMs: Date.now() - startedAt,
       })
     }
