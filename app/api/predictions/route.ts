@@ -4,15 +4,20 @@ import { selectTopPicks } from '@/lib/predictor'
 import { Prediction } from '@/lib/types'
 import { format } from 'date-fns'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET() {
   try {
     const fixtures = await getTodayFixtures()
 
     if (fixtures.length === 0) {
-      return NextResponse.json({ predictions: [], message: 'No fixtures today' })
+      return NextResponse.json({
+        predictions: [],
+        message: 'No fixtures scheduled today in supported leagues.',
+      })
     }
 
-    // Fetch standings for each unique competition
+    // Fetch standings for each competition that has matches today
     const codes = [...new Set(fixtures.map(f => f.competition.code))]
     const standingsMap = new Map<string, any[]>()
 
@@ -23,10 +28,17 @@ export async function GET() {
       })
     )
 
-    // Analyse and pick top fixtures
+    // Run prediction engine
     const picks = selectTopPicks(fixtures, standingsMap, 6)
 
-    // Convert to Prediction objects
+    if (picks.length === 0) {
+      return NextResponse.json({
+        predictions: [],
+        message: 'No high-confidence picks found for today.',
+      })
+    }
+
+    // Map to Prediction objects
     const predictions: Prediction[] = picks.map(p => {
       const date = new Date(p.fixture.utcDate)
       return {
