@@ -248,14 +248,15 @@ function analyseMatch(
   return { pick, pickLabel, confidence, reasoning: reasoning.slice(0, 4) }
 }
 
-const MIN_CONFIDENCE = 75   // Minimum confidence to show a pick
-const TARGET_PICKS = 5      // Aim for 4–5 picks per day
+const TARGET_PICKS = 5          // Max picks per day
+const THRESHOLDS = [75, 68, 62]  // Try highest first, relax if not enough picks
 
 export function selectTopPicks(
   fixtures: Fixture[],
   standingsMap: Map<string, TeamStanding[]>,
   count = TARGET_PICKS
 ): AnalysedFixture[] {
+  // Analyse all fixtures that have standings data
   const analysed: AnalysedFixture[] = []
 
   for (const fixture of fixtures) {
@@ -263,17 +264,20 @@ export function selectTopPicks(
     const homeStanding = standings.find(s => s.team.id === fixture.homeTeam.id)
     const awayStanding = standings.find(s => s.team.id === fixture.awayTeam.id)
 
-    // Skip if we have no standings data — can't reach MIN_CONFIDENCE without it
     if (!homeStanding || !awayStanding) continue
 
     const analysis = analyseMatch(fixture, homeStanding, awayStanding)
-
-    if (analysis.confidence >= MIN_CONFIDENCE) {
-      analysed.push({ fixture, homeStanding, awayStanding, ...analysis })
-    }
+    analysed.push({ fixture, homeStanding, awayStanding, ...analysis })
   }
 
-  return analysed
-    .sort((a, b) => b.confidence - a.confidence)
-    .slice(0, count)
+  const sorted = analysed.sort((a, b) => b.confidence - a.confidence)
+
+  // Try each threshold until we have enough picks
+  for (const threshold of THRESHOLDS) {
+    const picks = sorted.filter(p => p.confidence >= threshold)
+    if (picks.length >= 4) return picks.slice(0, count)
+  }
+
+  // Last resort — just return whatever we have above 60%
+  return sorted.filter(p => p.confidence >= 60).slice(0, count)
 }
