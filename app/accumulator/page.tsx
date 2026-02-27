@@ -8,7 +8,7 @@ import {
   updateAccumulatorEntry,
 } from '@/lib/storage'
 
-const ACCUM_START = 500
+const ACCUM_START = 200
 
 function AccumulatorContent() {
   const searchParams = useSearchParams()
@@ -102,7 +102,7 @@ function AccumulatorContent() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-white">Accumulator 💰</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Starting: ₦{ACCUM_START.toLocaleString()} • On loss: reset to ₦{ACCUM_START.toLocaleString()}</p>
+          <p className="text-sm text-gray-500 mt-0.5">Starting: ₦200 • On loss: reset to ₦200</p>
         </div>
         <button
           onClick={() => setShowAddForm(v => !v)}

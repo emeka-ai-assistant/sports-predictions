@@ -4,7 +4,7 @@ import { supabase } from './supabase'
 
 const LOCAL_KEY = 'sports_predictions_v2'
 const ACCUM_KEY = 'surepicks_accumulator_v1'
-const ACCUM_START = 500 // starting NGN amount on LOSS reset
+const ACCUM_START = 200 // starting NGN amount on LOSS reset
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
