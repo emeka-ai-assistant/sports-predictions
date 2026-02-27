@@ -200,10 +200,13 @@ function analyseMatch(
   return { pick, pickLabel, confidence, reasoning: reasoning.slice(0, 4) }
 }
 
+const MIN_CONFIDENCE = 85   // Only show picks we're genuinely confident about
+const TARGET_PICKS = 5      // Aim for 4–5 picks per day
+
 export function selectTopPicks(
   fixtures: Fixture[],
   standingsMap: Map<string, TeamStanding[]>,
-  count = 6
+  count = TARGET_PICKS
 ): AnalysedFixture[] {
   const analysed: AnalysedFixture[] = []
 
@@ -212,9 +215,12 @@ export function selectTopPicks(
     const homeStanding = standings.find(s => s.team.id === fixture.homeTeam.id)
     const awayStanding = standings.find(s => s.team.id === fixture.awayTeam.id)
 
+    // Skip if we have no standings data — can't reach MIN_CONFIDENCE without it
+    if (!homeStanding || !awayStanding) continue
+
     const analysis = analyseMatch(fixture, homeStanding, awayStanding)
 
-    if (analysis.confidence >= 60) {
+    if (analysis.confidence >= MIN_CONFIDENCE) {
       analysed.push({ fixture, homeStanding, awayStanding, ...analysis })
     }
   }

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getTodayFixtures, getStandings } from '@/lib/football-api'
+import { getTodayFixtures, getMultipleStandings } from '@/lib/football-api'
 import { selectTopPicks } from '@/lib/predictor'
 import { Prediction } from '@/lib/types'
 import { format } from 'date-fns'
@@ -56,24 +56,17 @@ export async function GET() {
       })
     }
 
-    // 3. Fetch standings for each competition
+    // 3. Fetch standings sequentially (avoids free-tier rate limit of 10 req/min)
     const codes = [...new Set(fixtures.map(f => f.competition.code))]
-    const standingsMap = new Map<string, any[]>()
+    const standingsMap = await getMultipleStandings(codes)
 
-    await Promise.allSettled(
-      codes.map(async code => {
-        const standings = await getStandings(code)
-        if (standings.length > 0) standingsMap.set(code, standings)
-      })
-    )
-
-    // 4. Run prediction engine
-    const picks = selectTopPicks(fixtures, standingsMap, 6)
+    // 4. Run prediction engine — 85% confidence threshold, up to 5 picks
+    const picks = selectTopPicks(fixtures, standingsMap, 5)
 
     if (picks.length === 0) {
       return NextResponse.json({
         predictions: [],
-        message: 'No high-confidence picks found for today.',
+        message: `Fixtures found but none cleared the 85% confidence threshold today. Check back tomorrow or add picks manually.`,
       })
     }
 

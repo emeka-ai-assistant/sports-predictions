@@ -49,6 +49,22 @@ export async function getStandings(competitionCode: string): Promise<TeamStandin
   }
 }
 
+/**
+ * Fetch standings for multiple competitions sequentially with a small delay
+ * between requests to respect the free-tier rate limit (10 req/min = 1 per 6s,
+ * but in practice 300ms spacing is enough since Next.js caches responses).
+ */
+export async function getMultipleStandings(codes: string[]): Promise<Map<string, TeamStanding[]>> {
+  const map = new Map<string, TeamStanding[]>()
+  for (const code of codes) {
+    const standings = await getStandings(code)
+    if (standings.length > 0) map.set(code, standings)
+    // 350ms pause — keeps us well under 10 req/min even on cold start
+    await new Promise(r => setTimeout(r, 350))
+  }
+  return map
+}
+
 export async function getFixturesByDate(dateFrom: string, dateTo: string): Promise<Fixture[]> {
   try {
     const data = await apiFetch<{ matches: Fixture[] }>(
