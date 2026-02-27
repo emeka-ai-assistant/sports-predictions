@@ -19,20 +19,32 @@ async function apiFetch<T>(path: string, tag?: string): Promise<T> {
   return res.json()
 }
 
+/**
+ * Fetch today's fixtures across all supported leagues.
+ * The free-tier generic /matches endpoint returns nothing — we must query
+ * each competition separately. Results are fetched sequentially to stay
+ * within the 10 req/min rate limit.
+ */
 export async function getTodayFixtures(): Promise<Fixture[]> {
   const today = new Date().toISOString().split('T')[0]
-  try {
-    const data = await apiFetch<{ matches: Fixture[] }>(
-      `/matches?dateFrom=${today}&dateTo=${today}`,
-      'fixtures'
-    )
-    return (data.matches || []).filter(m =>
-      SUPPORTED_LEAGUES.includes(m.competition.code)
-    )
-  } catch (e) {
-    console.error('Failed to fetch fixtures:', e)
-    return []
+  const all: Fixture[] = []
+
+  for (const code of SUPPORTED_LEAGUES) {
+    try {
+      const data = await apiFetch<{ matches: Fixture[] }>(
+        `/competitions/${code}/matches?dateFrom=${today}&dateTo=${today}`,
+        `fixtures-${code}`
+      )
+      if (data.matches?.length) {
+        all.push(...data.matches)
+      }
+    } catch (e) {
+      console.error(`Failed to fetch fixtures for ${code}:`, e)
+    }
+    await new Promise(r => setTimeout(r, 350))
   }
+
+  return all
 }
 
 export async function getStandings(competitionCode: string): Promise<TeamStanding[]> {
@@ -66,16 +78,22 @@ export async function getMultipleStandings(codes: string[]): Promise<Map<string,
 }
 
 export async function getFixturesByDate(dateFrom: string, dateTo: string): Promise<Fixture[]> {
-  try {
-    const data = await apiFetch<{ matches: Fixture[] }>(
-      `/matches?dateFrom=${dateFrom}&dateTo=${dateTo}`,
-      'fixtures-range'
-    )
-    return (data.matches || []).filter(m =>
-      SUPPORTED_LEAGUES.includes(m.competition.code)
-    )
-  } catch (e) {
-    console.error('Failed to fetch fixtures by date:', e)
-    return []
+  const all: Fixture[] = []
+
+  for (const code of SUPPORTED_LEAGUES) {
+    try {
+      const data = await apiFetch<{ matches: Fixture[] }>(
+        `/competitions/${code}/matches?dateFrom=${dateFrom}&dateTo=${dateTo}`,
+        `fixtures-range-${code}`
+      )
+      if (data.matches?.length) {
+        all.push(...data.matches)
+      }
+    } catch (e) {
+      console.error(`Failed to fetch fixtures for ${code}:`, e)
+    }
+    await new Promise(r => setTimeout(r, 350))
   }
+
+  return all
 }
