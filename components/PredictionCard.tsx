@@ -7,16 +7,19 @@ import { setOdds, setResult } from '@/lib/storage'
 interface Props {
   prediction: Prediction
   onUpdate: () => void
+  selected?: boolean
+  onToggleSelect?: (id: string) => void
 }
 
 const PICK_STYLES: Record<string, { bg: string; label: string; icon: string }> = {
-  HOME_WIN:  { bg: 'bg-blue-500/20 text-blue-300 border-blue-500/40',    label: '🏠 Home Win',       icon: '🏠' },
-  AWAY_WIN:  { bg: 'bg-purple-500/20 text-purple-300 border-purple-500/40', label: '✈️ Away Win',    icon: '✈️' },
-  DRAW:      { bg: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40', label: '🤝 Draw',         icon: '🤝' },
-  OVER_1_5:  { bg: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40',    label: '⚡ Over 1.5',       icon: '⚡' },
-  OVER_2_5:  { bg: 'bg-orange-500/20 text-orange-300 border-orange-500/40', label: '🔥 Over 2.5',    icon: '🔥' },
-  BTTS:      { bg: 'bg-pink-500/20 text-pink-300 border-pink-500/40',    label: '⚽ BTTS',            icon: '⚽' },
-  ONE_UP:    { bg: 'bg-green-500/20 text-green-300 border-green-500/40', label: '☝️ 1UP',             icon: '☝️' },
+  HOME_WIN:  { bg: 'bg-blue-500/20 text-blue-300 border-blue-500/40',      label: '🏠 Home Win',    icon: '🏠' },
+  AWAY_WIN:  { bg: 'bg-purple-500/20 text-purple-300 border-purple-500/40', label: '✈️ Away Win',   icon: '✈️' },
+  DRAW:      { bg: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40', label: '🤝 Draw',        icon: '🤝' },
+  OVER_1_5:  { bg: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40',       label: '⚡ Over 1.5',   icon: '⚡' },
+  OVER_2_5:  { bg: 'bg-orange-500/20 text-orange-300 border-orange-500/40', label: '🔥 Over 2.5',   icon: '🔥' },
+  BTTS:      { bg: 'bg-pink-500/20 text-pink-300 border-pink-500/40',       label: '⚽ BTTS',        icon: '⚽' },
+  ONE_UP:    { bg: 'bg-green-500/20 text-green-300 border-green-500/40',    label: '☝️ 1UP',         icon: '☝️' },
+  TWO_UP:    { bg: 'bg-teal-500/20 text-teal-300 border-teal-500/40',       label: '✌️ 2UP',         icon: '✌️' },
 }
 
 const RESULT_STYLES: Record<string, string> = {
@@ -46,18 +49,23 @@ function PickBadge({ pick, pickLabel }: { pick: string; pickLabel: string }) {
   )
 }
 
-// 1UP / 2UP explanation tooltip
 function PickTooltip({ pick }: { pick: string }) {
   if (pick === 'ONE_UP') return (
-    <span className="text-xs text-gray-500">If team leads by 1+ goal at any point = WIN</span>
+    <span className="text-xs text-gray-500">Lead by 1+ goal at any point = WIN</span>
+  )
+  if (pick === 'TWO_UP') return (
+    <span className="text-xs text-gray-500">Lead by 2+ goals at any point = WIN</span>
   )
   if (pick === 'OVER_1_5') return (
-    <span className="text-xs text-gray-500">Game must have 2 or more total goals</span>
+    <span className="text-xs text-gray-500">2+ total goals in the match</span>
+  )
+  if (pick === 'OVER_2_5') return (
+    <span className="text-xs text-gray-500">3+ total goals in the match</span>
   )
   return null
 }
 
-export default function PredictionCard({ prediction: p, onUpdate }: Props) {
+export default function PredictionCard({ prediction: p, onUpdate, selected, onToggleSelect }: Props) {
   const [oddsInput, setOddsInput] = useState(p.odds ? String(p.odds) : '')
   const [editingOdds, setEditingOdds] = useState(false)
   const [scoreH, setScoreH] = useState(p.homeScore !== undefined ? String(p.homeScore) : '')
@@ -93,16 +101,32 @@ export default function PredictionCard({ prediction: p, onUpdate }: Props) {
     onUpdate()
   }
 
+  const isSelectable = !!onToggleSelect
   const cardBorder =
+    selected ? 'border-green-400/70 ring-1 ring-green-400/30' :
     p.result === 'WIN' ? 'border-green-500/50' :
     p.result === 'LOSS' ? 'border-red-500/40' :
     'border-[#1e3a5f] hover:border-[#2a4f7f]'
 
   return (
-    <div className={`bg-[#0f1923] border rounded-xl overflow-hidden transition-all ${cardBorder} ${saving ? 'opacity-70' : ''}`}>
+    <div
+      className={`bg-[#0f1923] border rounded-xl overflow-hidden transition-all ${cardBorder} ${saving ? 'opacity-70' : ''}`}
+    >
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2 bg-[#0a1628] border-b border-[#1e3a5f]">
         <div className="flex items-center gap-2">
+          {isSelectable && (
+            <button
+              onClick={() => onToggleSelect!(p.id)}
+              className={`w-5 h-5 rounded flex items-center justify-center border transition-colors flex-shrink-0 ${
+                selected
+                  ? 'bg-green-500 border-green-500 text-black'
+                  : 'border-gray-600 hover:border-green-400'
+              }`}
+            >
+              {selected && <span className="text-xs font-bold">✓</span>}
+            </button>
+          )}
           {p.competitionEmblem && (
             <Image src={p.competitionEmblem} alt={p.competition} width={14} height={14} className="rounded-sm opacity-80" />
           )}
@@ -118,7 +142,7 @@ export default function PredictionCard({ prediction: p, onUpdate }: Props) {
         </div>
       </div>
 
-      <div className="p-4">
+      <div className={`p-4 ${isSelectable ? 'cursor-pointer' : ''}`} onClick={isSelectable ? () => onToggleSelect!(p.id) : undefined}>
         {/* Teams */}
         <div className="flex items-center gap-2 mb-3">
           <div className="flex-1 flex items-center gap-2 min-w-0">
@@ -163,12 +187,14 @@ export default function PredictionCard({ prediction: p, onUpdate }: Props) {
             </p>
           ))}
         </div>
+      </div>
 
-        {/* Odds + Result */}
+      {/* Odds + Result (always clickable, not part of select zone) */}
+      <div className="px-4 pb-4">
         <div className="border-t border-[#1e3a5f] pt-3 flex flex-wrap items-center gap-2">
           {/* Odds input */}
           {editingOdds ? (
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
               <input
                 type="number" step="0.01" min="1.01" placeholder="e.g. 1.85"
                 value={oddsInput}
@@ -182,7 +208,7 @@ export default function PredictionCard({ prediction: p, onUpdate }: Props) {
             </div>
           ) : (
             <button
-              onClick={() => setEditingOdds(true)}
+              onClick={e => { e.stopPropagation(); setEditingOdds(true) }}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1a2f4a] hover:bg-[#1e3a5f] border border-[#2a4f7f] rounded-lg text-sm transition-colors"
             >
               <span className="text-yellow-400">💰</span>
@@ -191,7 +217,7 @@ export default function PredictionCard({ prediction: p, onUpdate }: Props) {
           )}
 
           {/* Result section */}
-          <div className="ml-auto">
+          <div className="ml-auto" onClick={e => e.stopPropagation()}>
             {!p.result ? (
               editingScore ? (
                 <div className="flex items-center gap-1.5 flex-wrap">

@@ -5,7 +5,8 @@ export type PickType =
   | 'OVER_1_5'
   | 'OVER_2_5'
   | 'BTTS'
-  | 'ONE_UP'    // Team leads by 1 goal at ANY point = WIN
+  | 'ONE_UP'    // Team leads by 1+ goal at ANY point = WIN
+  | 'TWO_UP'    // Team leads by 2+ goals at ANY point = WIN
 
 export type ResultType = 'WIN' | 'LOSS' | 'VOID'
 
@@ -82,4 +83,16 @@ export interface HistoryStats {
   pending: number
   winRate: number
   roi: number
+}
+
+export interface AccumulatorEntry {
+  id: string
+  date: string          // YYYY-MM-DD
+  amount: number        // amount staked that day (carried forward from previous)
+  odds: number          // combined odds for the day
+  accumulatorTotal: number | null  // null while pending; amount × odds on WIN, 500 on LOSS
+  status: 'WIN' | 'LOSS' | 'PENDING'
+  pickCount: number     // number of picks in the combo
+  pickSummary: string[] // ["Arsenal HOME_WIN @ 1.85", ...]
+  createdAt: string
 }

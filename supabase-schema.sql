@@ -47,3 +47,30 @@ $$ LANGUAGE plpgsql;
 CREATE TRIGGER predictions_updated_at
   BEFORE UPDATE ON predictions
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Accumulator tracking table
+-- ─────────────────────────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS accumulator_entries (
+  id                  TEXT PRIMARY KEY,         -- e.g. "2026-02-27-accum"
+  date                DATE NOT NULL UNIQUE,     -- one entry per day
+  amount              DECIMAL(12,2) NOT NULL,   -- stake amount (NGN)
+  odds                DECIMAL(8,3) NOT NULL,    -- combined odds for the day
+  accumulator_total   DECIMAL(12,2),            -- NULL while pending; result after WIN/LOSS
+  status              TEXT NOT NULL DEFAULT 'PENDING'
+                        CHECK (status IN ('WIN','LOSS','PENDING')),
+  pick_count          INTEGER NOT NULL DEFAULT 1,
+  pick_summary        JSONB NOT NULL DEFAULT '[]',  -- ["Arsenal vs Man City — Home Win @ 1.85"]
+  created_at          TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Index for chronological listing
+CREATE INDEX IF NOT EXISTS idx_accumulator_entries_date ON accumulator_entries(date DESC);
+
+-- Enable Row Level Security
+ALTER TABLE accumulator_entries ENABLE ROW LEVEL SECURITY;
+
+-- Allow public read + write
+CREATE POLICY "Public access" ON accumulator_entries
+  FOR ALL USING (true) WITH CHECK (true);

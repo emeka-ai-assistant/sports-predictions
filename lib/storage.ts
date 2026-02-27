@@ -1,8 +1,10 @@
 'use client'
-import { Prediction, HistoryStats, ResultType } from './types'
+import { Prediction, HistoryStats, ResultType, AccumulatorEntry } from './types'
 import { supabase } from './supabase'
 
 const LOCAL_KEY = 'sports_predictions_v2'
+const ACCUM_KEY = 'surepicks_accumulator_v1'
+const ACCUM_START = 500 // starting NGN amount on LOSS reset
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -70,7 +72,7 @@ function localSet(preds: Prediction[]) {
   localStorage.setItem(LOCAL_KEY, JSON.stringify(preds))
 }
 
-// ── Public API ────────────────────────────────────────────────────────────
+// ── Prediction API ────────────────────────────────────────────────────────
 
 export async function getAllPredictions(): Promise<Prediction[]> {
   try {
@@ -82,7 +84,7 @@ export async function getAllPredictions(): Promise<Prediction[]> {
 
     if (error) throw error
     const preds = (data || []).map(fromRow)
-    localSet(preds) // keep local in sync
+    localSet(preds)
     return preds
   } catch {
     return localGet()
@@ -118,7 +120,6 @@ export async function upsertPredictions(incoming: Prediction[]): Promise<Predict
 
     if (error) throw error
     const saved = (data || []).map(fromRow)
-    // Merge into local
     const local = localGet()
     for (const p of saved) {
       const idx = local.findIndex(l => l.id === p.id)
@@ -127,7 +128,6 @@ export async function upsertPredictions(incoming: Prediction[]): Promise<Predict
     localSet(local)
     return saved
   } catch {
-    // Fallback to localStorage
     const local = localGet()
     for (const p of incoming) {
       const idx = local.findIndex(l => l.id === p.id)
@@ -143,7 +143,6 @@ export async function setOdds(id: string, odds: number): Promise<void> {
   try {
     await supabase.from('predictions').update({ odds }).eq('id', id)
   } catch {}
-  // Always update local too
   const local = localGet()
   const idx = local.findIndex(p => p.id === id)
   if (idx !== -1) { local[idx].odds = odds; localSet(local) }
@@ -195,5 +194,133 @@ export function getStats(predictions: Prediction[]): HistoryStats {
     pending: predictions.filter(p => !p.result).length,
     winRate: settled.length > 0 ? (wins.length / settled.length) * 100 : 0,
     roi,
+  }
+}
+
+// ── Accumulator API ───────────────────────────────────────────────────────
+
+function accumLocalGet(): AccumulatorEntry[] {
+  if (typeof window === 'undefined') return []
+  try {
+    return JSON.parse(localStorage.getItem(ACCUM_KEY) || '[]')
+  } catch { return [] }
+}
+
+function accumLocalSet(entries: AccumulatorEntry[]) {
+  if (typeof window === 'undefined') return
+  localStorage.setItem(ACCUM_KEY, JSON.stringify(entries))
+}
+
+function accumToRow(e: AccumulatorEntry) {
+  return {
+    id: e.id,
+    date: e.date,
+    amount: e.amount,
+    odds: e.odds,
+    accumulator_total: e.accumulatorTotal,
+    status: e.status,
+    pick_count: e.pickCount,
+    pick_summary: e.pickSummary,
+    created_at: e.createdAt,
+  }
+}
+
+function accumFromRow(row: any): AccumulatorEntry {
+  return {
+    id: row.id,
+    date: row.date,
+    amount: row.amount,
+    odds: row.odds,
+    accumulatorTotal: row.accumulator_total ?? null,
+    status: row.status ?? 'PENDING',
+    pickCount: row.pick_count ?? 0,
+    pickSummary: row.pick_summary ?? [],
+    createdAt: row.created_at,
+  }
+}
+
+export async function getAllAccumulatorEntries(): Promise<AccumulatorEntry[]> {
+  try {
+    const { data, error } = await supabase
+      .from('accumulator_entries')
+      .select('*')
+      .order('date', { ascending: false })
+
+    if (error) throw error
+    const entries = (data || []).map(accumFromRow)
+    accumLocalSet(entries)
+    return entries
+  } catch {
+    return accumLocalGet()
+  }
+}
+
+export async function saveAccumulatorEntry(entry: Omit<AccumulatorEntry, 'id' | 'createdAt'>): Promise<AccumulatorEntry | null> {
+  const id = `${entry.date}-accum`
+  const now = new Date().toISOString()
+  const full: AccumulatorEntry = { ...entry, id, createdAt: now }
+
+  try {
+    const { data, error } = await supabase
+      .from('accumulator_entries')
+      .upsert(accumToRow(full), { onConflict: 'date' })
+      .select()
+      .single()
+
+    if (error) throw error
+    const saved = accumFromRow(data)
+    const local = accumLocalGet()
+    const idx = local.findIndex(e => e.date === saved.date)
+    idx === -1 ? local.unshift(saved) : (local[idx] = saved)
+    accumLocalSet(local)
+    return saved
+  } catch {
+    const local = accumLocalGet()
+    const idx = local.findIndex(e => e.date === full.date)
+    idx === -1 ? local.unshift(full) : (local[idx] = full)
+    accumLocalSet(local)
+    return full
+  }
+}
+
+export async function updateAccumulatorEntry(
+  id: string,
+  status: 'WIN' | 'LOSS',
+  accumulatorTotal: number
+): Promise<void> {
+  try {
+    await supabase
+      .from('accumulator_entries')
+      .update({ status, accumulator_total: accumulatorTotal })
+      .eq('id', id)
+  } catch {}
+
+  const local = accumLocalGet()
+  const idx = local.findIndex(e => e.id === id)
+  if (idx !== -1) {
+    local[idx].status = status
+    local[idx].accumulatorTotal = accumulatorTotal
+    accumLocalSet(local)
+  }
+}
+
+/** Returns the next stake amount: last accumulator_total (if WIN) or 500 (on LOSS / none yet) */
+export async function getLastAccumulatorAmount(): Promise<number> {
+  try {
+    const { data, error } = await supabase
+      .from('accumulator_entries')
+      .select('status, accumulator_total')
+      .order('date', { ascending: false })
+      .limit(1)
+      .single()
+
+    if (error || !data) throw new Error('none')
+    if (data.status === 'WIN' && data.accumulator_total) return data.accumulator_total
+    return ACCUM_START
+  } catch {
+    const local = accumLocalGet()
+    const last = local.find(e => e.status !== 'PENDING')
+    if (last?.status === 'WIN' && last.accumulatorTotal) return last.accumulatorTotal
+    return ACCUM_START
   }
 }
