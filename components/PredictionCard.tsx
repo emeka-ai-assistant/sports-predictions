@@ -17,7 +17,6 @@ const PICK_STYLES: Record<string, { bg: string; label: string; icon: string }> =
   OVER_2_5:  { bg: 'bg-orange-500/20 text-orange-300 border-orange-500/40', label: '🔥 Over 2.5',    icon: '🔥' },
   BTTS:      { bg: 'bg-pink-500/20 text-pink-300 border-pink-500/40',    label: '⚽ BTTS',            icon: '⚽' },
   ONE_UP:    { bg: 'bg-green-500/20 text-green-300 border-green-500/40', label: '☝️ 1UP',             icon: '☝️' },
-  TWO_UP:    { bg: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40', label: '✌️ 2UP',       icon: '✌️' },
 }
 
 const RESULT_STYLES: Record<string, string> = {
@@ -51,9 +50,6 @@ function PickBadge({ pick, pickLabel }: { pick: string; pickLabel: string }) {
 function PickTooltip({ pick }: { pick: string }) {
   if (pick === 'ONE_UP') return (
     <span className="text-xs text-gray-500">If team leads by 1+ goal at any point = WIN</span>
-  )
-  if (pick === 'TWO_UP') return (
-    <span className="text-xs text-gray-500">If team leads by 2+ goals at any point = WIN</span>
   )
   if (pick === 'OVER_1_5') return (
     <span className="text-xs text-gray-500">Game must have 2 or more total goals</span>

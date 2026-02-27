@@ -114,7 +114,7 @@ export default function HomePage() {
             <span className="text-xs text-gray-600">{predictions.length} pick{predictions.length !== 1 ? 's' : ''} today</span>
             <div className="flex gap-1 ml-2 text-xs text-gray-700">
               <span>☝️ 1UP</span><span>·</span>
-              <span>✌️ 2UP</span><span>·</span>
+              
               <span>⚡ Over 1.5</span><span>·</span>
               <span>🔥 Over 2.5</span><span>·</span>
               <span>⚽ BTTS</span>

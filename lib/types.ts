@@ -6,7 +6,6 @@ export type PickType =
   | 'OVER_2_5'
   | 'BTTS'
   | 'ONE_UP'    // Team leads by 1 goal at ANY point = WIN
-  | 'TWO_UP'    // Team leads by 2 goals at ANY point = WIN
 
 export type ResultType = 'WIN' | 'LOSS' | 'VOID'
 

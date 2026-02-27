@@ -157,17 +157,7 @@ function analyseMatch(
   let pickLabel: string
   let confidence: number
 
-  if (dominantHome && expectedMargin >= 2.0) {
-    pick = 'TWO_UP'
-    pickLabel = `${fixture.homeTeam.name} 2UP`
-    confidence = Math.min(92, 60 + homeScore - awayScore)
-    reasoning.push(`${fixture.homeTeam.name} expected to lead by 2+ goals`)
-  } else if (dominantAway && expectedMargin >= 2.0) {
-    pick = 'TWO_UP'
-    pickLabel = `${fixture.awayTeam.name} 2UP`
-    confidence = Math.min(90, 58 + awayScore - homeScore)
-    reasoning.push(`${fixture.awayTeam.name} expected to lead by 2+ goals`)
-  } else if (dominantHome) {
+  if (dominantHome) {
     pick = 'ONE_UP'
     pickLabel = `${fixture.homeTeam.name} 1UP`
     confidence = Math.min(92, 58 + homeScore - awayScore)

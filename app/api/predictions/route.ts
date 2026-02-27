@@ -4,6 +4,7 @@ import { selectTopPicks } from '@/lib/predictor'
 import { Prediction } from '@/lib/types'
 import { format } from 'date-fns'
 import { supabase } from '@/lib/supabase'
+import { enrichWithOdds } from '@/lib/odds-api'
 
 export const dynamic = 'force-dynamic'
 
@@ -77,7 +78,7 @@ export async function GET() {
     }
 
     // 5. Map to Prediction objects
-    const predictions: Prediction[] = picks.map(p => {
+    const rawPredictions = picks.map(p => {
       const date = new Date(p.fixture.utcDate)
       return {
         id: `${p.fixture.id}-${format(date, 'yyyy-MM-dd')}`,
@@ -98,6 +99,13 @@ export async function GET() {
         createdAt: new Date().toISOString(),
       }
     })
+
+    // 5b. Auto-fetch odds from The Odds API
+    const oddsMap = await enrichWithOdds(rawPredictions)
+    const predictions: Prediction[] = rawPredictions.map(p => ({
+      ...p,
+      odds: oddsMap.get(`${p.homeTeam}|${p.awayTeam}`) ?? undefined,
+    }))
 
     // 6. Save to Supabase for future requests
     const rows = predictions.map(pred => ({
