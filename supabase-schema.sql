@@ -49,6 +49,21 @@ CREATE TRIGGER predictions_updated_at
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 -- ─────────────────────────────────────────────────────────────────────────────
+-- Standings cache (prevents hitting the 10 req/min free-tier rate limit)
+-- ─────────────────────────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS standings_cache (
+  competition_code  TEXT PRIMARY KEY,   -- e.g. 'PL', 'BL1', 'SA'
+  standings         JSONB NOT NULL,     -- full standings array
+  fetched_at        TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE standings_cache ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Public access" ON standings_cache
+  FOR ALL USING (true) WITH CHECK (true);
+
+-- ─────────────────────────────────────────────────────────────────────────────
 -- Accumulator tracking table
 -- ─────────────────────────────────────────────────────────────────────────────
 

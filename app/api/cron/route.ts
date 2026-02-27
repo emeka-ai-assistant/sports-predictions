@@ -1,14 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { revalidateTag } from 'next/cache'
-import { getTodayFixtures, getStandings } from '@/lib/football-api'
+import { getTodayFixtures, prefetchAllStandings } from '@/lib/football-api'
 import { selectTopPicks } from '@/lib/predictor'
+import { enrichWithOdds } from '@/lib/odds-api'
+import { supabase } from '@/lib/supabase'
 import { format } from 'date-fns'
+import { Prediction } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
-export const maxDuration = 60
+export const maxDuration = 300 // 5 min — cron does more work now
 
 export async function GET(request: NextRequest) {
-  // Verify cron secret — Vercel auto-injects Authorization header
   const authHeader = request.headers.get('authorization')
   const cronSecret = process.env.CRON_SECRET
 
@@ -17,66 +19,115 @@ export async function GET(request: NextRequest) {
   }
 
   const startedAt = Date.now()
-  console.log(`[CRON] Daily predictions refresh started at ${new Date().toISOString()}`)
+  const today = new Date().toISOString().split('T')[0]
+  console.log(`[CRON] Daily refresh started — ${new Date().toISOString()}`)
 
   try {
-    // 1. Bust the Next.js cache for all football data
+    // 1. Bust Next.js cache
     revalidateTag('predictions')
     revalidateTag('football-data')
 
-    // 2. Fetch today's fixtures fresh (no-store bypasses cache)
-    const today = new Date().toISOString().split('T')[0]
+    // 2. Pre-warm ALL standings into Supabase cache
+    //    This uses up ~9 API calls but runs only once per day at 7 AM.
+    //    All subsequent predictions requests read standings from Supabase (0 API calls).
+    const standingsMap = await prefetchAllStandings()
+    console.log(`[CRON] Standings cached for ${standingsMap.size} leagues`)
+
+    // 3. Fetch today's fixtures (per-competition — free tier fix)
     const fixtures = await getTodayFixtures()
+    console.log(`[CRON] ${fixtures.length} fixtures found for ${today}`)
 
     if (fixtures.length === 0) {
-      console.log('[CRON] No fixtures today.')
       return NextResponse.json({
-        ok: true,
-        message: 'No fixtures today',
-        date: today,
+        ok: true, message: 'No fixtures today', date: today,
         durationMs: Date.now() - startedAt,
       })
     }
 
-    // 3. Fetch standings for all competitions that have matches today
-    const codes = [...new Set(fixtures.map(f => f.competition.code))]
-    const standingsMap = new Map<string, any[]>()
+    // 4. Run prediction engine
+    const picks = selectTopPicks(fixtures, standingsMap, 5)
 
-    await Promise.allSettled(
-      codes.map(async code => {
-        const standings = await getStandings(code)
-        if (standings.length > 0) standingsMap.set(code, standings)
+    if (picks.length === 0) {
+      return NextResponse.json({
+        ok: true, message: 'Fixtures found but none cleared 65% confidence', date: today,
+        fixturesFound: fixtures.length, durationMs: Date.now() - startedAt,
       })
-    )
+    }
 
-    // 4. Run prediction analysis
-    const picks = selectTopPicks(fixtures, standingsMap, 6)
+    // 5. Build prediction objects
+    const rawPredictions = picks.map(p => {
+      const date = new Date(p.fixture.utcDate)
+      return {
+        id: `${p.fixture.id}-${format(date, 'yyyy-MM-dd')}`,
+        matchId: p.fixture.id,
+        homeTeam: p.fixture.homeTeam.name,
+        awayTeam: p.fixture.awayTeam.name,
+        homeCrest: p.fixture.homeTeam.crest || '',
+        awayCrest: p.fixture.awayTeam.crest || '',
+        competition: p.fixture.competition.name,
+        competitionCode: p.fixture.competition.code,
+        competitionEmblem: p.fixture.competition.emblem || '',
+        matchDate: format(date, 'yyyy-MM-dd'),
+        kickoff: format(date, 'HH:mm'),
+        pick: p.pick,
+        pickLabel: p.pickLabel,
+        confidence: p.confidence,
+        reasoning: p.reasoning,
+        createdAt: new Date().toISOString(),
+      }
+    })
 
-    // 5. Build summary
-    const summary = picks.map(p => ({
-      match: `${p.fixture.homeTeam.name} vs ${p.fixture.awayTeam.name}`,
-      competition: p.fixture.competition.name,
-      pick: p.pickLabel,
-      confidence: p.confidence,
-      kickoff: format(new Date(p.fixture.utcDate), 'HH:mm'),
+    // 6. Auto-fetch odds
+    const oddsMap = await enrichWithOdds(rawPredictions)
+    const predictions: Prediction[] = rawPredictions.map(p => ({
+      ...p,
+      odds: oddsMap.get(`${p.homeTeam}|${p.awayTeam}`) ?? undefined,
     }))
 
-    const durationMs = Date.now() - startedAt
-    console.log(`[CRON] Done in ${durationMs}ms. Found ${picks.length} picks.`)
+    // 7. Save predictions to Supabase (clear today's first to avoid stale picks)
+    await supabase.from('predictions').delete().eq('match_date', today)
+    await supabase.from('predictions').upsert(
+      predictions.map(pred => ({
+        id: pred.id,
+        match_id: pred.matchId,
+        home_team: pred.homeTeam,
+        away_team: pred.awayTeam,
+        home_crest: pred.homeCrest,
+        away_crest: pred.awayCrest,
+        competition: pred.competition,
+        competition_code: pred.competitionCode,
+        competition_emblem: pred.competitionEmblem,
+        match_date: pred.matchDate,
+        kickoff: pred.kickoff,
+        pick: pred.pick,
+        pick_label: pred.pickLabel,
+        confidence: pred.confidence,
+        reasoning: pred.reasoning,
+        created_at: pred.createdAt,
+      })),
+      { onConflict: 'id' }
+    )
+
+    const summary = predictions.map(p => ({
+      match: `${p.homeTeam} vs ${p.awayTeam}`,
+      pick: p.pickLabel,
+      confidence: p.confidence,
+      odds: p.odds,
+      kickoff: p.kickoff,
+    }))
+
+    console.log(`[CRON] Done in ${Date.now() - startedAt}ms. ${predictions.length} picks saved.`)
 
     return NextResponse.json({
-      ok: true,
-      date: today,
+      ok: true, date: today,
+      standingsCached: standingsMap.size,
       fixturesFound: fixtures.length,
-      picksGenerated: picks.length,
+      picksGenerated: predictions.length,
       picks: summary,
-      durationMs,
+      durationMs: Date.now() - startedAt,
     })
   } catch (error: any) {
     console.error('[CRON] Error:', error.message)
-    return NextResponse.json(
-      { ok: false, error: error.message },
-      { status: 500 }
-    )
+    return NextResponse.json({ ok: false, error: error.message }, { status: 500 })
   }
 }
