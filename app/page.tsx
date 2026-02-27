@@ -37,7 +37,7 @@ export default function HomePage() {
     setMessage(null)
 
     try {
-      const res = await fetch('/api/predictions')
+      const res = await fetch(force ? '/api/predictions?force=true' : '/api/predictions')
       const data = await res.json()
 
       if (data.error) {

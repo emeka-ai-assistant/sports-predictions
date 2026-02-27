@@ -8,45 +8,30 @@ import { enrichWithOdds } from '@/lib/odds-api'
 
 export const dynamic = 'force-dynamic'
 
-export async function GET() {
+export async function GET(req: Request) {
   const today = new Date().toISOString().split('T')[0]
+  const { searchParams } = new URL(req.url)
+  const force = searchParams.get('force') === 'true'
 
   try {
-    // 1. Check Supabase for today's predictions first (avoids redundant API calls)
-    const { data: existing, error: dbError } = await supabase
-      .from('predictions')
-      .select('*')
-      .eq('match_date', today)
-      .order('confidence', { ascending: false })
+    // 1. Return cached Supabase predictions (unless force refresh requested)
+    if (!force) {
+      const { data: existing, error: dbError } = await supabase
+        .from('predictions')
+        .select('*')
+        .eq('match_date', today)
+        .order('confidence', { ascending: false })
 
-    if (!dbError && existing && existing.length > 0) {
-      // Return stored predictions (preserves user-set odds + results)
-      const predictions: Prediction[] = existing.map((row: any) => ({
-        id: row.id,
-        matchId: row.match_id,
-        homeTeam: row.home_team,
-        awayTeam: row.away_team,
-        homeCrest: row.home_crest ?? '',
-        awayCrest: row.away_crest ?? '',
-        competition: row.competition,
-        competitionCode: row.competition_code,
-        competitionEmblem: row.competition_emblem ?? '',
-        matchDate: row.match_date,
-        kickoff: row.kickoff,
-        pick: row.pick,
-        pickLabel: row.pick_label,
-        confidence: row.confidence,
-        reasoning: row.reasoning ?? [],
-        odds: row.odds ?? undefined,
-        result: row.result ?? undefined,
-        homeScore: row.home_score ?? undefined,
-        awayScore: row.away_score ?? undefined,
-        createdAt: row.created_at,
-      }))
-      return NextResponse.json({ predictions, source: 'database' })
+      if (!dbError && existing && existing.length > 0) {
+        const predictions: Prediction[] = existing.map(rowToPrediction)
+        return NextResponse.json({ predictions, source: 'database' })
+      }
+    } else {
+      // Clear today's cache so we re-run the engine fresh
+      await supabase.from('predictions').delete().eq('match_date', today)
     }
 
-    // 2. None found — fetch fresh from football-data.org
+    // 2. Fetch today's fixtures across all supported leagues
     const fixtures = await getTodayFixtures()
 
     if (fixtures.length === 0) {
@@ -60,7 +45,7 @@ export async function GET() {
     const codes = [...new Set(fixtures.map(f => f.competition.code))]
     const standingsMap = await getMultipleStandings(codes)
 
-    // 4. Run prediction engine — 85% confidence threshold, up to 5 picks
+    // 4. Run prediction engine — 65% confidence threshold, up to 5 picks
     const picks = selectTopPicks(fixtures, standingsMap, 5)
 
     if (picks.length === 0) {
@@ -93,14 +78,14 @@ export async function GET() {
       }
     })
 
-    // 5b. Auto-fetch odds from The Odds API
+    // 6. Auto-fetch odds
     const oddsMap = await enrichWithOdds(rawPredictions)
     const predictions: Prediction[] = rawPredictions.map(p => ({
       ...p,
       odds: oddsMap.get(`${p.homeTeam}|${p.awayTeam}`) ?? undefined,
     }))
 
-    // 6. Save to Supabase for future requests
+    // 7. Save to Supabase
     const rows = predictions.map(pred => ({
       id: pred.id,
       match_id: pred.matchId,
@@ -129,5 +114,30 @@ export async function GET() {
       { error: 'Failed to generate predictions', details: error.message },
       { status: 500 }
     )
+  }
+}
+
+function rowToPrediction(row: any): Prediction {
+  return {
+    id: row.id,
+    matchId: row.match_id,
+    homeTeam: row.home_team,
+    awayTeam: row.away_team,
+    homeCrest: row.home_crest ?? '',
+    awayCrest: row.away_crest ?? '',
+    competition: row.competition,
+    competitionCode: row.competition_code,
+    competitionEmblem: row.competition_emblem ?? '',
+    matchDate: row.match_date,
+    kickoff: row.kickoff,
+    pick: row.pick,
+    pickLabel: row.pick_label,
+    confidence: row.confidence,
+    reasoning: row.reasoning ?? [],
+    odds: row.odds ?? undefined,
+    result: row.result ?? undefined,
+    homeScore: row.home_score ?? undefined,
+    awayScore: row.away_score ?? undefined,
+    createdAt: row.created_at,
   }
 }
