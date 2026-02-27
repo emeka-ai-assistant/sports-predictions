@@ -3,11 +3,49 @@ import { getTodayFixtures, getStandings } from '@/lib/football-api'
 import { selectTopPicks } from '@/lib/predictor'
 import { Prediction } from '@/lib/types'
 import { format } from 'date-fns'
+import { supabase } from '@/lib/supabase'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET() {
+  const today = new Date().toISOString().split('T')[0]
+
   try {
+    // 1. Check Supabase for today's predictions first (avoids redundant API calls)
+    const { data: existing, error: dbError } = await supabase
+      .from('predictions')
+      .select('*')
+      .eq('match_date', today)
+      .order('confidence', { ascending: false })
+
+    if (!dbError && existing && existing.length > 0) {
+      // Return stored predictions (preserves user-set odds + results)
+      const predictions: Prediction[] = existing.map((row: any) => ({
+        id: row.id,
+        matchId: row.match_id,
+        homeTeam: row.home_team,
+        awayTeam: row.away_team,
+        homeCrest: row.home_crest ?? '',
+        awayCrest: row.away_crest ?? '',
+        competition: row.competition,
+        competitionCode: row.competition_code,
+        competitionEmblem: row.competition_emblem ?? '',
+        matchDate: row.match_date,
+        kickoff: row.kickoff,
+        pick: row.pick,
+        pickLabel: row.pick_label,
+        confidence: row.confidence,
+        reasoning: row.reasoning ?? [],
+        odds: row.odds ?? undefined,
+        result: row.result ?? undefined,
+        homeScore: row.home_score ?? undefined,
+        awayScore: row.away_score ?? undefined,
+        createdAt: row.created_at,
+      }))
+      return NextResponse.json({ predictions, source: 'database' })
+    }
+
+    // 2. None found — fetch fresh from football-data.org
     const fixtures = await getTodayFixtures()
 
     if (fixtures.length === 0) {
@@ -17,7 +55,7 @@ export async function GET() {
       })
     }
 
-    // Fetch standings for each competition that has matches today
+    // 3. Fetch standings for each competition
     const codes = [...new Set(fixtures.map(f => f.competition.code))]
     const standingsMap = new Map<string, any[]>()
 
@@ -28,7 +66,7 @@ export async function GET() {
       })
     )
 
-    // Run prediction engine
+    // 4. Run prediction engine
     const picks = selectTopPicks(fixtures, standingsMap, 6)
 
     if (picks.length === 0) {
@@ -38,7 +76,7 @@ export async function GET() {
       })
     }
 
-    // Map to Prediction objects
+    // 5. Map to Prediction objects
     const predictions: Prediction[] = picks.map(p => {
       const date = new Date(p.fixture.utcDate)
       return {
@@ -61,7 +99,29 @@ export async function GET() {
       }
     })
 
-    return NextResponse.json({ predictions })
+    // 6. Save to Supabase for future requests
+    const rows = predictions.map(pred => ({
+      id: pred.id,
+      match_id: pred.matchId,
+      home_team: pred.homeTeam,
+      away_team: pred.awayTeam,
+      home_crest: pred.homeCrest,
+      away_crest: pred.awayCrest,
+      competition: pred.competition,
+      competition_code: pred.competitionCode,
+      competition_emblem: pred.competitionEmblem,
+      match_date: pred.matchDate,
+      kickoff: pred.kickoff,
+      pick: pred.pick,
+      pick_label: pred.pickLabel,
+      confidence: pred.confidence,
+      reasoning: pred.reasoning,
+      created_at: pred.createdAt,
+    }))
+
+    await supabase.from('predictions').upsert(rows, { onConflict: 'id' })
+
+    return NextResponse.json({ predictions, source: 'live' })
   } catch (error: any) {
     console.error('Predictions API error:', error)
     return NextResponse.json(
