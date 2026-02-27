@@ -2,8 +2,7 @@ import { Fixture, TeamStanding, AnalysedFixture, PickType } from './types'
 
 function parseForm(form: string | null): number {
   if (!form) return 0
-  const games = form.split(',').slice(-5)
-  return games.reduce((score, g) => {
+  return form.split(',').slice(-5).reduce((score, g) => {
     if (g === 'W') return score + 3
     if (g === 'D') return score + 1
     return score
@@ -11,157 +10,201 @@ function parseForm(form: string | null): number {
 }
 
 function getFormString(form: string | null): string {
-  if (!form) return 'No data'
+  if (!form) return 'N/A'
   return form.split(',').slice(-5).join(' ')
 }
 
 function analyseMatch(
   fixture: Fixture,
-  homeStanding?: TeamStanding,
-  awayStanding?: TeamStanding
+  home?: TeamStanding,
+  away?: TeamStanding
 ): { pick: PickType; pickLabel: string; confidence: number; reasoning: string[] } {
   const reasoning: string[] = []
   let homeScore = 0
   let awayScore = 0
   let bttsSignal = 0
-  let overSignal = 0
+  let over15Signal = 0
+  let over25Signal = 0
 
-  // ── Position advantage ──────────────────────────────────────────
-  if (homeStanding && awayStanding) {
-    const posDiff = awayStanding.position - homeStanding.position
+  const homeName = fixture.homeTeam.name
+  const awayName = fixture.awayTeam.name
 
-    if (posDiff >= 10) {
-      homeScore += 20
-      reasoning.push(`${fixture.homeTeam.name} is ${posDiff} places above ${fixture.awayTeam.name} in the table`)
-    } else if (posDiff >= 5) {
+  if (home && away) {
+    // ── Position + Points gap ─────────────────────────────────────
+    const posDiff = away.position - home.position
+    const ptsDiff = home.points - away.points
+
+    if (posDiff >= 12) {
+      homeScore += 22
+      reasoning.push(`${homeName} is ${posDiff} places above ${awayName} in the table`)
+    } else if (posDiff >= 6) {
       homeScore += 12
-      reasoning.push(`${fixture.homeTeam.name} holds a ${posDiff}-place table advantage`)
-    } else if (posDiff <= -10) {
-      awayScore += 20
-      reasoning.push(`${fixture.awayTeam.name} is ${Math.abs(posDiff)} places above ${fixture.homeTeam.name} in the table`)
-    } else if (posDiff <= -5) {
+      reasoning.push(`${homeName} holds a ${posDiff}-place table advantage`)
+    } else if (posDiff <= -12) {
+      awayScore += 22
+      reasoning.push(`${awayName} is ${Math.abs(posDiff)} places above ${homeName} in the table`)
+    } else if (posDiff <= -6) {
       awayScore += 12
-      reasoning.push(`${fixture.awayTeam.name} has a ${Math.abs(posDiff)}-place advantage in the standings`)
+      reasoning.push(`${awayName} has a ${Math.abs(posDiff)}-place table advantage`)
     }
 
-    // ── Points gap ──────────────────────────────────────────────
-    const ptsDiff = homeStanding.points - awayStanding.points
-    if (ptsDiff >= 15) {
-      homeScore += 15
-      reasoning.push(`${fixture.homeTeam.name} leads by ${ptsDiff} points`)
-    } else if (ptsDiff >= 8) {
-      homeScore += 8
-      reasoning.push(`${fixture.homeTeam.name} leads on points (+${ptsDiff})`)
-    } else if (ptsDiff <= -15) {
-      awayScore += 15
-      reasoning.push(`${fixture.awayTeam.name} leads by ${Math.abs(ptsDiff)} points`)
-    } else if (ptsDiff <= -8) {
-      awayScore += 8
-      reasoning.push(`${fixture.awayTeam.name} leads on points (+${Math.abs(ptsDiff)})`)
+    if (ptsDiff >= 20) {
+      homeScore += 18
+      reasoning.push(`${homeName} leads by ${ptsDiff} points — dominant season`)
+    } else if (ptsDiff >= 10) {
+      homeScore += 10
+      reasoning.push(`${homeName} leads on points (+${ptsDiff})`)
+    } else if (ptsDiff <= -20) {
+      awayScore += 18
+      reasoning.push(`${awayName} leads by ${Math.abs(ptsDiff)} points`)
+    } else if (ptsDiff <= -10) {
+      awayScore += 10
+      reasoning.push(`${awayName} leads on points (+${Math.abs(ptsDiff)})`)
     }
 
-    // ── Form ──────────────────────────────────────────────────
-    const homeFormScore = parseForm(homeStanding.form)
-    const awayFormScore = parseForm(awayStanding.form)
-    const formDiff = homeFormScore - awayFormScore
+    // ── Form ──────────────────────────────────────────────────────
+    const homeForm = parseForm(home.form)
+    const awayForm = parseForm(away.form)
 
-    if (homeFormScore >= 12) {
+    if (homeForm >= 12) {
       homeScore += 12
-      reasoning.push(`${fixture.homeTeam.name} in excellent form: ${getFormString(homeStanding.form)}`)
-    } else if (homeFormScore >= 9) {
+      reasoning.push(`${homeName} in excellent form: ${getFormString(home.form)}`)
+    } else if (homeForm >= 9) {
       homeScore += 6
-      reasoning.push(`${fixture.homeTeam.name} good recent form: ${getFormString(homeStanding.form)}`)
     }
-
-    if (awayFormScore >= 12) {
+    if (awayForm >= 12) {
       awayScore += 12
-      reasoning.push(`${fixture.awayTeam.name} in excellent form: ${getFormString(awayStanding.form)}`)
-    } else if (awayFormScore >= 9) {
+      reasoning.push(`${awayName} in excellent form: ${getFormString(away.form)}`)
+    } else if (awayForm >= 9) {
       awayScore += 6
-      reasoning.push(`${fixture.awayTeam.name} good recent form: ${getFormString(awayStanding.form)}`)
     }
 
-    // ── Goals / BTTS / Over signals ────────────────────────────
-    const homeAvgGoals = homeStanding.playedGames > 0
-      ? homeStanding.goalsFor / homeStanding.playedGames : 0
-    const awayAvgGoals = awayStanding.playedGames > 0
-      ? awayStanding.goalsFor / awayStanding.playedGames : 0
-    const homeConcedes = homeStanding.playedGames > 0
-      ? homeStanding.goalsAgainst / homeStanding.playedGames : 0
-    const awayConcedes = awayStanding.playedGames > 0
-      ? awayStanding.goalsAgainst / awayStanding.playedGames : 0
+    // ── Win rate ──────────────────────────────────────────────────
+    const homeWinRate = home.playedGames > 0 ? home.won / home.playedGames : 0
+    const awayWinRate = away.playedGames > 0 ? away.won / away.playedGames : 0
 
-    if (homeAvgGoals >= 1.8) {
-      overSignal += 8
-      reasoning.push(`${fixture.homeTeam.name} averages ${homeAvgGoals.toFixed(1)} goals/game`)
+    if (homeWinRate >= 0.65) {
+      homeScore += 10
+      reasoning.push(`${homeName} wins ${(homeWinRate * 100).toFixed(0)}% of games`)
     }
-    if (awayAvgGoals >= 1.5) {
-      overSignal += 6
-      reasoning.push(`${fixture.awayTeam.name} averages ${awayAvgGoals.toFixed(1)} goals/game`)
+    if (awayWinRate >= 0.65) {
+      awayScore += 10
+      reasoning.push(`${awayName} wins ${(awayWinRate * 100).toFixed(0)}% of games`)
     }
-    if (homeAvgGoals >= 1.5 && awayConcedes >= 1.5) {
+
+    // ── Goals / BTTS / Over signals ───────────────────────────────
+    const homeAvgFor = home.playedGames > 0 ? home.goalsFor / home.playedGames : 0
+    const awayAvgFor = away.playedGames > 0 ? away.goalsFor / away.playedGames : 0
+    const homeAvgAgainst = home.playedGames > 0 ? home.goalsAgainst / home.playedGames : 0
+    const awayAvgAgainst = away.playedGames > 0 ? away.goalsAgainst / away.playedGames : 0
+
+    const expectedHomeGoals = (homeAvgFor + awayAvgAgainst) / 2
+    const expectedAwayGoals = (awayAvgFor + homeAvgAgainst) / 2
+    const expectedTotal = expectedHomeGoals + expectedAwayGoals
+
+    if (expectedTotal >= 3.0) {
+      over25Signal += 14
+      over15Signal += 18
+      reasoning.push(`High-scoring game expected: ~${expectedTotal.toFixed(1)} goals`)
+    } else if (expectedTotal >= 2.0) {
+      over15Signal += 14
+      over25Signal += 6
+    } else if (expectedTotal >= 1.5) {
+      over15Signal += 8
+    }
+
+    if (homeAvgFor >= 2.0 && awayAvgAgainst >= 1.5) {
       bttsSignal += 8
-      reasoning.push(`${fixture.homeTeam.name} scores freely; ${fixture.awayTeam.name} concedes ${awayConcedes.toFixed(1)}/game`)
+      reasoning.push(`${homeName} scores ${homeAvgFor.toFixed(1)}/game; ${awayName} concedes ${awayAvgAgainst.toFixed(1)}/game`)
     }
-    if (awayAvgGoals >= 1.3 && homeConcedes >= 1.3) {
-      bttsSignal += 6
-      reasoning.push(`${fixture.awayTeam.name} scores regularly; ${fixture.homeTeam.name} concedes ${homeConcedes.toFixed(1)}/game`)
-    }
-
-    // ── Win rate advantage ──────────────────────────────────────
-    const homeWinRate = homeStanding.playedGames > 0
-      ? (homeStanding.won / homeStanding.playedGames) * 100 : 0
-    const awayWinRate = awayStanding.playedGames > 0
-      ? (awayStanding.won / awayStanding.playedGames) * 100 : 0
-
-    if (homeWinRate >= 60) {
-      homeScore += 8
-      reasoning.push(`${fixture.homeTeam.name} wins ${homeWinRate.toFixed(0)}% of games`)
-    }
-    if (awayWinRate >= 60) {
-      awayScore += 8
-      reasoning.push(`${fixture.awayTeam.name} wins ${awayWinRate.toFixed(0)}% of games`)
+    if (awayAvgFor >= 1.5 && homeAvgAgainst >= 1.2) {
+      bttsSignal += 8
+      reasoning.push(`${awayName} scores ${awayAvgFor.toFixed(1)}/game; ${homeName} concedes ${homeAvgAgainst.toFixed(1)}/game`)
     }
   }
 
-  // Home advantage bonus
+  // Home advantage
   homeScore += 5
-  reasoning.push(`${fixture.homeTeam.name} playing at home`)
+  if (!reasoning.some(r => r.includes('home'))) {
+    reasoning.push(`${homeName} playing at home`)
+  }
 
-  // ── Decide pick ─────────────────────────────────────────────
-  const totalScore = Math.max(homeScore, awayScore, bttsSignal, overSignal)
+  // ── Determine winner and margins ──────────────────────────────
+  const strongerHome = homeScore > awayScore + 10
+  const dominantHome = homeScore > awayScore + 20
+  const strongerAway = awayScore > homeScore + 8
+  const dominantAway = awayScore > homeScore + 18
+
+  const home2 = home
+  const away2 = away
+
+  // Calculate expected goal margin for winner
+  let expectedMargin = 0
+  if (home2 && away2) {
+    const homeAvgFor = home2.goalsFor / home2.playedGames
+    const awayAvgAgainst = away2.goalsAgainst / away2.playedGames
+    const awayAvgFor = away2.goalsFor / away2.playedGames
+    const homeAvgAgainst = home2.goalsAgainst / home2.playedGames
+    if (strongerHome || dominantHome) {
+      expectedMargin = (homeAvgFor + awayAvgAgainst) / 2 - (awayAvgFor + homeAvgAgainst) / 2
+    } else if (strongerAway || dominantAway) {
+      expectedMargin = (awayAvgFor + homeAvgAgainst) / 2 - (homeAvgFor + awayAvgAgainst) / 2
+    }
+  }
+
+  // ── Final pick decision ───────────────────────────────────────
   let pick: PickType
   let pickLabel: string
   let confidence: number
 
-  // BTTS or Over 2.5 if both teams are prolific and scores are close
-  if (bttsSignal >= 14 && Math.abs(homeScore - awayScore) <= 10) {
+  if (dominantHome && expectedMargin >= 2.0) {
+    pick = 'TWO_UP'
+    pickLabel = `${fixture.homeTeam.name} 2UP`
+    confidence = Math.min(92, 60 + homeScore - awayScore)
+    reasoning.push(`${fixture.homeTeam.name} expected to lead by 2+ goals`)
+  } else if (dominantAway && expectedMargin >= 2.0) {
+    pick = 'TWO_UP'
+    pickLabel = `${fixture.awayTeam.name} 2UP`
+    confidence = Math.min(90, 58 + awayScore - homeScore)
+    reasoning.push(`${fixture.awayTeam.name} expected to lead by 2+ goals`)
+  } else if (dominantHome) {
+    pick = 'ONE_UP'
+    pickLabel = `${fixture.homeTeam.name} 1UP`
+    confidence = Math.min(92, 58 + homeScore - awayScore)
+    reasoning.push(`${fixture.homeTeam.name} expected to take and hold the lead`)
+  } else if (dominantAway) {
+    pick = 'ONE_UP'
+    pickLabel = `${fixture.awayTeam.name} 1UP`
+    confidence = Math.min(90, 56 + awayScore - homeScore)
+    reasoning.push(`${fixture.awayTeam.name} expected to take and hold the lead`)
+  } else if (bttsSignal >= 14 && Math.abs(homeScore - awayScore) <= 10) {
     pick = 'BTTS'
     pickLabel = 'Both Teams to Score'
-    confidence = Math.min(90, 55 + bttsSignal)
-    if (!reasoning.some(r => r.includes('Both teams'))) {
-      reasoning.push('Both teams have been scoring consistently')
-    }
-  } else if (overSignal >= 16 && Math.abs(homeScore - awayScore) <= 8) {
+    confidence = Math.min(88, 52 + bttsSignal)
+  } else if (over25Signal >= 14 && Math.abs(homeScore - awayScore) <= 8) {
     pick = 'OVER_2_5'
     pickLabel = 'Over 2.5 Goals'
-    confidence = Math.min(88, 50 + overSignal)
-  } else if (homeScore > awayScore + 10) {
+    confidence = Math.min(86, 50 + over25Signal)
+  } else if (over15Signal >= 12 && Math.abs(homeScore - awayScore) <= 6) {
+    pick = 'OVER_1_5'
+    pickLabel = 'Over 1.5 Goals'
+    confidence = Math.min(88, 54 + over15Signal)
+  } else if (strongerHome) {
     pick = 'HOME_WIN'
     pickLabel = `${fixture.homeTeam.name} to Win`
-    confidence = Math.min(90, 45 + (homeScore - awayScore))
-  } else if (awayScore > homeScore + 8) {
+    confidence = Math.min(88, 44 + (homeScore - awayScore))
+  } else if (strongerAway) {
     pick = 'AWAY_WIN'
     pickLabel = `${fixture.awayTeam.name} to Win`
-    confidence = Math.min(88, 40 + (awayScore - homeScore))
-  } else if (homeScore > awayScore) {
+    confidence = Math.min(86, 42 + (awayScore - homeScore))
+  } else if (homeScore >= awayScore) {
     pick = 'HOME_WIN'
     pickLabel = `${fixture.homeTeam.name} to Win`
-    confidence = Math.min(78, 40 + (homeScore - awayScore))
+    confidence = Math.min(72, 40 + (homeScore - awayScore))
   } else {
     pick = 'AWAY_WIN'
     pickLabel = `${fixture.awayTeam.name} to Win`
-    confidence = Math.min(75, 38 + (awayScore - homeScore))
+    confidence = Math.min(70, 38 + (awayScore - homeScore))
   }
 
   return { pick, pickLabel, confidence, reasoning: reasoning.slice(0, 4) }
@@ -181,18 +224,11 @@ export function selectTopPicks(
 
     const analysis = analyseMatch(fixture, homeStanding, awayStanding)
 
-    // Only include if confidence >= 60
     if (analysis.confidence >= 60) {
-      analysed.push({
-        fixture,
-        homeStanding,
-        awayStanding,
-        ...analysis,
-      })
+      analysed.push({ fixture, homeStanding, awayStanding, ...analysis })
     }
   }
 
-  // Sort by confidence descending, take top N
   return analysed
     .sort((a, b) => b.confidence - a.confidence)
     .slice(0, count)
