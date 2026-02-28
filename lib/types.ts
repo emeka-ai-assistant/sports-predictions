@@ -2,6 +2,7 @@ export type PickType =
   | 'HOME_WIN'
   | 'AWAY_WIN'
   | 'DRAW'
+  | 'OVER_0_5'          // At least 1 goal in the match
   | 'OVER_1_5'
   | 'OVER_2_5'
   | 'BTTS'

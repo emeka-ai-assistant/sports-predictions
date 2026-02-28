@@ -83,6 +83,7 @@ export default function HistoryPage() {
           </button>
         ))}
       </div>
+      
 
       {loading ? (
         <div className="flex justify-center py-20">

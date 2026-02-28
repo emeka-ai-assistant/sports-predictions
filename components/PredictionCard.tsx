@@ -15,6 +15,7 @@ const PICK_STYLES: Record<string, { bg: string; label: string; icon: string }> =
   HOME_WIN:  { bg: 'bg-blue-500/20 text-blue-300 border-blue-500/40',      label: '🏠 Home Win',    icon: '🏠' },
   AWAY_WIN:  { bg: 'bg-purple-500/20 text-purple-300 border-purple-500/40', label: '✈️ Away Win',   icon: '✈️' },
   DRAW:      { bg: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40', label: '🤝 Draw',        icon: '🤝' },
+  OVER_0_5:  { bg: 'bg-sky-500/20 text-sky-300 border-sky-500/40',          label: '💧 Over 0.5',   icon: '💧' },
   OVER_1_5:  { bg: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40',       label: '⚡ Over 1.5',   icon: '⚡' },
   OVER_2_5:  { bg: 'bg-orange-500/20 text-orange-300 border-orange-500/40', label: '🔥 Over 2.5',   icon: '🔥' },
   BTTS:      { bg: 'bg-pink-500/20 text-pink-300 border-pink-500/40',       label: '⚽ BTTS',        icon: '⚽' },
@@ -57,6 +58,9 @@ function PickTooltip({ pick }: { pick: string }) {
   )
   if (pick === 'TWO_UP') return (
     <span className="text-xs text-gray-500">Lead by 2+ goals at any point = WIN</span>
+  )
+  if (pick === 'OVER_0_5') return (
+    <span className="text-xs text-gray-500">At least 1 goal in the match</span>
   )
   if (pick === 'OVER_1_5') return (
     <span className="text-xs text-gray-500">2+ total goals in the match</span>
