@@ -52,6 +52,10 @@ export interface H2HStats {
   over15Rate: number     // % of meetings with 2+ goals (0–1)
   over25Rate: number     // % of meetings with 3+ goals (0–1)
   bttsRate: number       // % of meetings where both scored (0–1)
+  // Win rates from the perspective of the CURRENT fixture's teams
+  homeWinRate: number    // % the current home team won in H2H history
+  awayWinRate: number    // % the current away team won in H2H history
+  drawRate: number       // % draws in H2H history
 }
 
 export interface AnalysedFixture {

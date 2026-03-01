@@ -41,6 +41,7 @@ function analyseMatch(
   const pg_h = home.playedGames || 1
   const pg_a = away.playedGames || 1
 
+  // ── 1. League position gap ────────────────────────────────────
   if (posDiff >= 14) { homeSignal += 22; reasoning.push(`${homeName} is ${posDiff} places higher in the table`) }
   else if (posDiff >= 8) { homeSignal += 14; reasoning.push(`${homeName} holds a ${posDiff}-place table advantage`) }
   else if (posDiff >= 4) { homeSignal += 7 }
@@ -48,6 +49,7 @@ function analyseMatch(
   else if (posDiff <= -8) { awaySignal += 14; reasoning.push(`${awayName} has a ${Math.abs(posDiff)}-place table advantage`) }
   else if (posDiff <= -4) { awaySignal += 7 }
 
+  // ── 2. Points gap ─────────────────────────────────────────────
   if (ptsDiff >= 22) { homeSignal += 18; reasoning.push(`${homeName} leads by ${ptsDiff} points — dominant season`) }
   else if (ptsDiff >= 12) { homeSignal += 10; reasoning.push(`${homeName} has a ${ptsDiff}-point lead in the standings`) }
   else if (ptsDiff >= 5) { homeSignal += 5 }
@@ -55,17 +57,52 @@ function analyseMatch(
   else if (ptsDiff <= -12) { awaySignal += 10; reasoning.push(`${awayName} has a ${Math.abs(ptsDiff)}-point advantage`) }
   else if (ptsDiff <= -5) { awaySignal += 5 }
 
+  // ── 3. Recent form (last 5 games) — bigger weight than before ─
   const homeForm = parseForm(home.form)
   const awayForm = parseForm(away.form)
-  if (homeForm >= 12) { homeSignal += 10; reasoning.push(`${homeName} excellent recent form: ${getFormString(home.form)}`) }
-  else if (homeForm >= 9) { homeSignal += 5 }
-  if (awayForm >= 12) { awaySignal += 10; reasoning.push(`${awayName} excellent recent form: ${getFormString(away.form)}`) }
-  else if (awayForm >= 9) { awaySignal += 5 }
+  const homeFormStr = getFormString(home.form)
+  const awayFormStr = getFormString(away.form)
 
+  // Bonus for hot form; PENALTY for cold streak
+  if (homeForm >= 13)      { homeSignal += 14; reasoning.push(`${homeName} on fire — form: ${homeFormStr}`) }
+  else if (homeForm >= 10) { homeSignal += 9;  reasoning.push(`${homeName} good recent form: ${homeFormStr}`) }
+  else if (homeForm >= 7)  { homeSignal += 4 }
+  else if (homeForm <= 2)  { homeSignal -= 6;  reasoning.push(`${homeName} in terrible form: ${homeFormStr}`) }
+  else if (homeForm <= 4)  { homeSignal -= 3 }
+
+  if (awayForm >= 13)      { awaySignal += 14; reasoning.push(`${awayName} on fire — form: ${awayFormStr}`) }
+  else if (awayForm >= 10) { awaySignal += 9;  reasoning.push(`${awayName} good recent form: ${awayFormStr}`) }
+  else if (awayForm >= 7)  { awaySignal += 4 }
+  else if (awayForm <= 2)  { awaySignal -= 6;  reasoning.push(`${awayName} in terrible form: ${awayFormStr}`) }
+  else if (awayForm <= 4)  { awaySignal -= 3 }
+
+  // ── 4. Season win rate ────────────────────────────────────────
   const homeWinRate = home.won / pg_h
   const awayWinRate = away.won / pg_a
   if (homeWinRate >= 0.65) { homeSignal += 8; reasoning.push(`${homeName} wins ${(homeWinRate * 100).toFixed(0)}% of games`) }
   if (awayWinRate >= 0.65) { awaySignal += 8; reasoning.push(`${awayName} wins ${(awayWinRate * 100).toFixed(0)}% of games`) }
+
+  // ── 5. Head-to-Head history (who wins when these two meet) ────
+  if (h2h && h2h.meetings >= 3) {
+    if (h2h.homeWinRate >= 0.65) {
+      homeSignal += 12
+      reasoning.push(`H2H: ${homeName} won ${Math.round(h2h.homeWinRate * h2h.meetings)}/${h2h.meetings} recent meetings`)
+    } else if (h2h.homeWinRate >= 0.5) {
+      homeSignal += 6
+      reasoning.push(`H2H: ${homeName} edges ${Math.round(h2h.homeWinRate * h2h.meetings)}/${h2h.meetings} recent meetings`)
+    } else if (h2h.awayWinRate >= 0.65) {
+      awaySignal += 12
+      reasoning.push(`H2H: ${awayName} won ${Math.round(h2h.awayWinRate * h2h.meetings)}/${h2h.meetings} recent meetings`)
+    } else if (h2h.awayWinRate >= 0.5) {
+      awaySignal += 6
+      reasoning.push(`H2H: ${awayName} edges ${Math.round(h2h.awayWinRate * h2h.meetings)}/${h2h.meetings} recent meetings`)
+    } else if (h2h.drawRate >= 0.5) {
+      // H2H suggests a draw is likely — reduce both win signals slightly
+      homeSignal -= 3
+      awaySignal -= 3
+      reasoning.push(`H2H: ${Math.round(h2h.drawRate * h2h.meetings)}/${h2h.meetings} recent meetings ended as draws`)
+    }
+  }
 
   // ── Expected goals ────────────────────────────────────────────
   const hAvgFor  = home.goalsFor  / pg_h
@@ -131,14 +168,23 @@ function analyseMatch(
   let pickLabel: string
   let confidence: number
 
+  // H2H confidence boosts for win markets
+  const h2hHomeBoost = h2h && h2h.meetings >= 3 && h2h.homeWinRate >= 0.5
+    ? Math.round(h2h.homeWinRate * 10) : 0
+  const h2hAwayBoost = h2h && h2h.meetings >= 3 && h2h.awayWinRate >= 0.5
+    ? Math.round(h2h.awayWinRate * 10) : 0
+
+  // Form confidence boosts
+  const formHomeBoost = homeForm >= 10 ? 4 : homeForm <= 3 ? -4 : 0
+  const formAwayBoost = awayForm >= 10 ? 4 : awayForm <= 3 ? -4 : 0
+
   // ── 1. OVER 1.5 (goals game — needs real evidence, not just average xG) ──
   if (goalsProbable) {
     pick = 'OVER_1_5'; pickLabel = 'Over 1.5 Goals'
     const h2hBoost = h2hOver15 ? 5 : 0
     confidence = Math.min(84, 52 + Math.round((xTotal - 2.7) * 10) + h2hBoost)
     if (h2hOver15 && h2h) {
-      reasoning.push(`H2H history: ${(h2h.over15Rate * 100).toFixed(0)}% of last ${h2h.meetings} meetings had 2+ goals`)
-      reasoning.push(`Average ${h2h.avgGoals.toFixed(1)} goals per meeting between these sides`)
+      reasoning.push(`H2H: ${(h2h.over15Rate * 100).toFixed(0)}% of last ${h2h.meetings} meetings had 2+ goals (avg ${h2h.avgGoals.toFixed(1)}/game)`)
     } else {
       reasoning.push(`${xTotal.toFixed(1)} xG expected — both sides in a scoring mood`)
       if (homeScoringTeam) reasoning.push(`${homeName} scores ${hAvgFor.toFixed(1)}/game`)
@@ -169,50 +215,52 @@ function analyseMatch(
     if (hAvgFor >= 1.6) reasoning.push(`${homeName} averages ${hAvgFor.toFixed(1)} goals/game`)
     if (aAvgFor >= 1.6) reasoning.push(`${awayName} averages ${aAvgFor.toFixed(1)} goals/game`)
 
-  // ── 4. WIN / DRAW markets (use when there's a real competitive gap) ───
+  // ── 4. WIN markets (use when there's a real competitive gap) ─────────
   } else if (dominantHome) {
     pick = 'HOME_WIN'; pickLabel = `${homeName} to Win`
-    confidence = Math.min(83, 46 + Math.floor(diff / 2))
-    reasoning.push(`${homeName} strong favourites — ${ptsDiff}-point gap in the standings`)
+    confidence = Math.min(84, 46 + Math.floor(diff / 2) + h2hHomeBoost + formHomeBoost)
+    reasoning.push(`${homeName} strong favourites — ${ptsDiff} pts ahead, ${posDiff} places higher`)
     if (homeIsScorer) reasoning.push(`${homeName} averages ${hAvgFor.toFixed(1)} goals/game`)
 
   } else if (strongHome) {
     pick = 'HOME_WIN'; pickLabel = `${homeName} to Win`
-    confidence = Math.min(80, 44 + Math.floor(diff / 2))
-    reasoning.push(`${homeName} the clear home favourite`)
+    confidence = Math.min(81, 44 + Math.floor(diff / 2) + h2hHomeBoost + formHomeBoost)
+    reasoning.push(`${homeName} clear home favourite — form: ${homeFormStr}`)
 
   } else if (dominantAway) {
     pick = 'AWAY_WIN'; pickLabel = `${awayName} to Win`
-    confidence = Math.min(82, 44 + Math.floor(Math.abs(diff) / 2))
+    confidence = Math.min(83, 44 + Math.floor(Math.abs(diff) / 2) + h2hAwayBoost + formAwayBoost)
     reasoning.push(`${awayName} clearly the better side despite playing away`)
     if (awayIsScorer) reasoning.push(`${awayName} averages ${aAvgFor.toFixed(1)} goals/game`)
 
   } else if (strongAway) {
     pick = 'AWAY_WIN'; pickLabel = `${awayName} to Win`
-    confidence = Math.min(79, 42 + Math.floor(Math.abs(diff) / 2))
-    reasoning.push(`${awayName} strong away from home`)
+    confidence = Math.min(80, 42 + Math.floor(Math.abs(diff) / 2) + h2hAwayBoost + formAwayBoost)
+    reasoning.push(`${awayName} strong away from home — form: ${awayFormStr}`)
 
   // ── 5. 1UP (only extreme dominance AND prolific scorer) ───────────────
   } else if (extremeHome && homeIsScorer) {
     pick = 'ONE_UP'; pickLabel = `${homeName} 1UP`
-    confidence = Math.min(84, 52 + Math.floor(diff / 3))
-    reasoning.push(`${homeName} dominant at home — ${hAvgFor.toFixed(1)} goals/game`)
+    confidence = Math.min(84, 52 + Math.floor(diff / 3) + formHomeBoost)
+    reasoning.push(`${homeName} dominant at home — ${hAvgFor.toFixed(1)} goals/game, form: ${homeFormStr}`)
 
   } else if (extremeAway && awayIsScorer) {
     pick = 'ONE_UP'; pickLabel = `${awayName} 1UP`
-    confidence = Math.min(82, 50 + Math.floor(Math.abs(diff) / 3))
-    reasoning.push(`${awayName} dominant even away from home`)
+    confidence = Math.min(82, 50 + Math.floor(Math.abs(diff) / 3) + formAwayBoost)
+    reasoning.push(`${awayName} dominant even away from home — form: ${awayFormStr}`)
 
   // ── 6. HANDICAP (moderate mismatch, nothing else qualifies) ──────────
   } else if (moderateHome) {
     pick = 'HANDICAP_PLUS_1'; pickLabel = `${awayName} +1`
-    confidence = Math.min(77, 66 + Math.floor(diff / 4))
+    confidence = Math.min(78, 66 + Math.floor(diff / 4) + formHomeBoost)
     reasoning.push(`${homeName} slight edge — away team unlikely to lose by 2+`)
+    if (h2h && h2h.meetings >= 3) reasoning.push(`H2H: ${Math.round(h2h.homeWinRate * h2h.meetings)}W-${Math.round(h2h.drawRate * h2h.meetings)}D-${Math.round(h2h.awayWinRate * h2h.meetings)}L in last ${h2h.meetings}`)
 
   } else if (moderateAway) {
     pick = 'HANDICAP_PLUS_1'; pickLabel = `${homeName} +1`
-    confidence = Math.min(77, 66 + Math.floor(Math.abs(diff) / 4))
+    confidence = Math.min(78, 66 + Math.floor(Math.abs(diff) / 4) + formAwayBoost)
     reasoning.push(`${awayName} slight edge — home team unlikely to lose by 2+`)
+    if (h2h && h2h.meetings >= 3) reasoning.push(`H2H: ${Math.round(h2h.awayWinRate * h2h.meetings)}W-${Math.round(h2h.drawRate * h2h.meetings)}D-${Math.round(h2h.homeWinRate * h2h.meetings)}L in last ${h2h.meetings}`)
 
   // ── 7. OVER 0.5 (defensive but goals still expected) ─────────────────
   } else if (atLeastOneGoal) {
@@ -228,12 +276,15 @@ function analyseMatch(
     reasoning.push(`Low-data match — slight home advantage`)
   }
 
-  // Final reasoning padding (home advantage note)
-  if (!reasoning.some(r => r.toLowerCase().includes('home'))) {
-    reasoning.push(`${homeName} playing at home`)
+  // Always append form + H2H summary if not already mentioned
+  if (h2h && h2h.meetings >= 3 && !reasoning.some(r => r.includes('H2H'))) {
+    reasoning.push(`H2H: ${Math.round(h2h.homeWinRate * h2h.meetings)}W-${Math.round(h2h.drawRate * h2h.meetings)}D-${Math.round(h2h.awayWinRate * h2h.meetings)}L (${homeName} perspective, last ${h2h.meetings})`)
+  }
+  if (!reasoning.some(r => r.includes('form'))) {
+    reasoning.push(`Form — ${homeName}: ${homeFormStr} | ${awayName}: ${awayFormStr}`)
   }
 
-  return { pick, pickLabel, confidence, reasoning: reasoning.slice(0, 4) }
+  return { pick, pickLabel, confidence, reasoning: reasoning.slice(0, 5) }
 }
 
 const TARGET_PICKS = 5

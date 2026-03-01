@@ -127,7 +127,16 @@ export async function getMultipleStandings(codes: string[]): Promise<Map<string,
  * Fetch head-to-head stats for a fixture.
  * Returns historical goal averages, over-rates, and BTTS rate.
  */
-export async function getH2H(fixtureId: number): Promise<H2HStats | null> {
+/**
+ * Fetch head-to-head stats for a fixture.
+ * homeTeamId / awayTeamId = the current fixture's teams — used to normalise
+ * win rates correctly regardless of who was "home" in past meetings.
+ */
+export async function getH2H(
+  fixtureId: number,
+  homeTeamId: number,
+  awayTeamId: number
+): Promise<H2HStats | null> {
   try {
     const data = await apiFetch<{ matches: any[] }>(
       `/matches/${fixtureId}/head2head?limit=10`,
@@ -141,19 +150,45 @@ export async function getH2H(fixtureId: number): Promise<H2HStats | null> {
     )
     if (settled.length === 0) return null
 
+    const n = settled.length
+
+    // Total goals per meeting
     const totalGoals = settled.map(m =>
       (m.score.fullTime.home || 0) + (m.score.fullTime.away || 0)
     )
 
+    // Win/draw rates — normalised from the current fixture's home-team perspective.
+    // In each historical meeting the "home" team might be either side, so we use
+    // team IDs to figure out who actually won each game.
+    let homeWins = 0, awayWins = 0, draws = 0
+    for (const m of settled) {
+      const winner = m.score?.winner // 'HOME_TEAM' | 'AWAY_TEAM' | 'DRAW' | null
+      const mHomeId = m.homeTeam?.id
+      const mAwayId = m.awayTeam?.id
+      if (winner === 'DRAW') {
+        draws++
+      } else if (winner === 'HOME_TEAM') {
+        // Home team in that meeting won — map to current fixture perspective
+        if (mHomeId === homeTeamId) homeWins++
+        else if (mHomeId === awayTeamId) awayWins++
+      } else if (winner === 'AWAY_TEAM') {
+        if (mAwayId === homeTeamId) homeWins++
+        else if (mAwayId === awayTeamId) awayWins++
+      }
+    }
+
     return {
-      meetings: settled.length,
-      avgGoals: totalGoals.reduce((a, b) => a + b, 0) / settled.length,
-      over05Rate: totalGoals.filter(g => g >= 1).length / settled.length,
-      over15Rate: totalGoals.filter(g => g >= 2).length / settled.length,
-      over25Rate: totalGoals.filter(g => g >= 3).length / settled.length,
-      bttsRate: settled.filter(m =>
+      meetings: n,
+      avgGoals: totalGoals.reduce((a, b) => a + b, 0) / n,
+      over05Rate: totalGoals.filter(g => g >= 1).length / n,
+      over15Rate: totalGoals.filter(g => g >= 2).length / n,
+      over25Rate: totalGoals.filter(g => g >= 3).length / n,
+      bttsRate:   settled.filter(m =>
         m.score.fullTime.home > 0 && m.score.fullTime.away > 0
-      ).length / settled.length,
+      ).length / n,
+      homeWinRate: homeWins / n,
+      awayWinRate: awayWins / n,
+      drawRate:    draws   / n,
     }
   } catch (e) {
     console.error(`Failed to fetch H2H for fixture ${fixtureId}:`, e)

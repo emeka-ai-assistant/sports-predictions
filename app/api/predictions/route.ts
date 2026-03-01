@@ -48,7 +48,7 @@ export async function GET(req: Request) {
     // 4. Fetch H2H data for each fixture (sequential, 350ms delay)
     const h2hMap = new Map<number, any>()
     for (const fixture of fixtures) {
-      const h2h = await getH2H(fixture.id)
+      const h2h = await getH2H(fixture.id, fixture.homeTeam.id, fixture.awayTeam.id)
       if (h2h) h2hMap.set(fixture.id, h2h)
       await new Promise(r => setTimeout(r, 350))
     }
