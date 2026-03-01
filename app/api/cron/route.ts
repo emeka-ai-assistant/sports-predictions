@@ -33,8 +33,8 @@ export async function GET(request: NextRequest) {
     const standingsMap = await prefetchAllStandings()
     console.log(`[CRON] Standings cached for ${standingsMap.size} leagues`)
 
-    // 3. Fetch today's fixtures (per-competition — free tier fix)
-    const fixtures = await getTodayFixtures()
+    // 3. Fetch today's fixtures + recent results for form computation
+    const { fixtures, formMap } = await getTodayFixtures()
     console.log(`[CRON] ${fixtures.length} fixtures found for ${today}`)
 
     if (fixtures.length === 0) {
@@ -52,8 +52,8 @@ export async function GET(request: NextRequest) {
       await new Promise(r => setTimeout(r, 350))
     }
 
-    // 5. Run prediction engine with H2H data
-    const picks = selectTopPicks(fixtures, standingsMap, h2hMap, 5)
+    // 5. Run prediction engine with H2H + computed form data
+    const picks = selectTopPicks(fixtures, standingsMap, h2hMap, 5, formMap)
 
     if (picks.length === 0) {
       return NextResponse.json({

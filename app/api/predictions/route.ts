@@ -31,8 +31,8 @@ export async function GET(req: Request) {
       await supabase.from('predictions').delete().eq('match_date', today)
     }
 
-    // 2. Fetch today's fixtures across all supported leagues
-    const fixtures = await getTodayFixtures()
+    // 2. Fetch today's fixtures + recent results for form computation
+    const { fixtures, formMap } = await getTodayFixtures()
 
     if (fixtures.length === 0) {
       return NextResponse.json({
@@ -53,8 +53,8 @@ export async function GET(req: Request) {
       await new Promise(r => setTimeout(r, 350))
     }
 
-    // 5. Run prediction engine with standings + H2H
-    const picks = selectTopPicks(fixtures, standingsMap, h2hMap, 5)
+    // 5. Run prediction engine with standings + H2H + computed form
+    const picks = selectTopPicks(fixtures, standingsMap, h2hMap, 5, formMap)
 
     if (picks.length === 0) {
       return NextResponse.json({

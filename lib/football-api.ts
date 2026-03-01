@@ -1,4 +1,33 @@
 import { Fixture, TeamStanding, H2HStats } from './types'
+
+/** Build a form string (e.g. "W,D,L,W,W") for each team from recent finished matches. */
+export function computeFormMap(matches: any[]): Map<number, string> {
+  const raw = new Map<number, string[]>()
+
+  // Sort descending so we pick the 5 most-recent first
+  const finished = matches
+    .filter(m => m.score?.winner && m.score?.fullTime?.home !== null)
+    .sort((a, b) => new Date(b.utcDate).getTime() - new Date(a.utcDate).getTime())
+
+  for (const m of finished) {
+    const homeId: number = m.homeTeam?.id
+    const awayId: number = m.awayTeam?.id
+    const winner: string = m.score.winner // 'HOME_TEAM' | 'AWAY_TEAM' | 'DRAW'
+
+    if (!raw.has(homeId)) raw.set(homeId, [])
+    if (!raw.has(awayId)) raw.set(awayId, [])
+
+    const hForm = raw.get(homeId)!
+    const aForm = raw.get(awayId)!
+
+    if (hForm.length < 5) hForm.push(winner === 'HOME_TEAM' ? 'W' : winner === 'DRAW' ? 'D' : 'L')
+    if (aForm.length < 5) aForm.push(winner === 'AWAY_TEAM' ? 'W' : winner === 'DRAW' ? 'D' : 'L')
+  }
+
+  const out = new Map<number, string>()
+  raw.forEach((arr, id) => out.set(id, arr.join(',')))
+  return out
+}
 import { supabase } from './supabase'
 
 const BASE_URL = 'https://api.football-data.org/v4'
@@ -24,27 +53,42 @@ async function apiFetch<T>(path: string, tag?: string): Promise<T> {
 const delay = (ms: number) => new Promise(r => setTimeout(r, ms))
 
 /**
- * Fetch today's fixtures per competition.
- * The free-tier generic /matches endpoint returns 0 — must query each league separately.
+ * Fetch today's fixtures per competition, plus recent completed matches for form calculation.
+ * Expands date range to last 6 weeks so we can compute our own form (free tier returns form=null).
+ * Returns fixtures for today AND a formMap (teamId → "W,D,L,W,D" last-5 string).
  */
-export async function getTodayFixtures(): Promise<Fixture[]> {
+export async function getTodayFixtures(): Promise<{ fixtures: Fixture[]; formMap: Map<number, string> }> {
   const today = new Date().toISOString().split('T')[0]
-  const all: Fixture[] = []
+  const sixWeeksAgo = new Date()
+  sixWeeksAgo.setDate(sixWeeksAgo.getDate() - 42)
+  const fromDate = sixWeeksAgo.toISOString().split('T')[0]
+
+  const allMatches: any[] = []
+  const todayFixtures: Fixture[] = []
 
   for (const code of SUPPORTED_LEAGUES) {
     try {
-      const data = await apiFetch<{ matches: Fixture[] }>(
-        `/competitions/${code}/matches?dateFrom=${today}&dateTo=${today}`,
+      const data = await apiFetch<{ matches: any[] }>(
+        `/competitions/${code}/matches?dateFrom=${fromDate}&dateTo=${today}`,
         `fixtures-${code}`
       )
-      if (data.matches?.length) all.push(...data.matches)
+      if (data.matches?.length) {
+        // Today's scheduled/live games
+        const todays = data.matches.filter(m =>
+          m.utcDate.startsWith(today) && ['TIMED', 'SCHEDULED', 'IN_PLAY', 'PAUSED'].includes(m.status)
+        )
+        todayFixtures.push(...todays)
+        // All matches (including finished) for form computation
+        allMatches.push(...data.matches)
+      }
     } catch (e) {
       console.error(`Failed to fetch fixtures for ${code}:`, e)
     }
     await delay(350)
   }
 
-  return all
+  const formMap = computeFormMap(allMatches)
+  return { fixtures: todayFixtures, formMap }
 }
 
 export async function getFixturesByDate(dateFrom: string, dateTo: string): Promise<Fixture[]> {

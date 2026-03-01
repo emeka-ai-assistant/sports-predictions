@@ -294,15 +294,24 @@ export function selectTopPicks(
   fixtures: Fixture[],
   standingsMap: Map<string, TeamStanding[]>,
   h2hMap: Map<number, H2HStats | null> = new Map(),
-  count = TARGET_PICKS
+  count = TARGET_PICKS,
+  formMap: Map<number, string> = new Map()   // teamId → "W,D,L,W,W" (last 5)
 ): AnalysedFixture[] {
   const analysed: AnalysedFixture[] = []
 
   for (const fixture of fixtures) {
     const standings = standingsMap.get(fixture.competition.code) || []
-    const homeStanding = standings.find(s => s.team.id === fixture.homeTeam.id)
-    const awayStanding = standings.find(s => s.team.id === fixture.awayTeam.id)
+    let homeStanding = standings.find(s => s.team.id === fixture.homeTeam.id)
+    let awayStanding = standings.find(s => s.team.id === fixture.awayTeam.id)
     if (!homeStanding || !awayStanding) continue
+
+    // Inject computed form if the API didn't supply it (free-tier returns null)
+    if (!homeStanding.form && formMap.has(fixture.homeTeam.id)) {
+      homeStanding = { ...homeStanding, form: formMap.get(fixture.homeTeam.id) ?? null }
+    }
+    if (!awayStanding.form && formMap.has(fixture.awayTeam.id)) {
+      awayStanding = { ...awayStanding, form: formMap.get(fixture.awayTeam.id) ?? null }
+    }
 
     const h2h = h2hMap.get(fixture.id) ?? undefined
     const analysis = analyseMatch(fixture, homeStanding, awayStanding, h2h)
