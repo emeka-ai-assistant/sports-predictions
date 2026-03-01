@@ -159,7 +159,7 @@ export function selectNBAPicks(
       homeCode:    game.teams.home.code,
       awayCode:    game.teams.visitors.code,
       gameDate:    format(dateObj, 'yyyy-MM-dd'),
-      kickoff:     formatKickoff(game.date.start ?? game.date),
+      kickoff:     formatKickoff(game.date.start),
       pick:        result.pick,
       pickLabel:   result.pickLabel,
       line:        result.line,
@@ -172,13 +172,17 @@ export function selectNBAPicks(
 
   const sorted = analysed.sort((a, b) => b._sort - a._sort)
 
+  // Try progressively lower thresholds
   for (const threshold of THRESHOLDS) {
     const picks = sorted.filter(p => p.confidence >= threshold)
     if (picks.length >= 3) return picks.slice(0, count).map(({ _sort, ...p }) => p)
   }
 
-  return sorted
-    .filter(p => p.confidence >= 60)
-    .slice(0, count)
-    .map(({ _sort, ...p }) => p)
+  // NBA floor is lower (54%) — home/away picks are meaningful even when evenly matched
+  const NBA_FLOOR = 54
+  const aboveFloor = sorted.filter(p => p.confidence >= NBA_FLOOR)
+  if (aboveFloor.length > 0) return aboveFloor.slice(0, count).map(({ _sort, ...p }) => p)
+
+  // Last resort: show all games ranked (never leave the page empty)
+  return sorted.slice(0, count).map(({ _sort, ...p }) => p)
 }
