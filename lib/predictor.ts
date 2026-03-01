@@ -91,86 +91,119 @@ function analyseMatch(
   const homeIsScorer   = hAvgFor >= 1.8 && aAvgAgst >= 1.2
   const awayIsScorer   = aAvgFor >= 1.8 && hAvgAgst >= 1.2
 
+  // ── Scoring profiles ──────────────────────────────────────────
+  // Is each team genuinely a scoring side?
+  const homeScoringTeam  = hAvgFor >= 1.4  // scores regularly
+  const awayScoringTeam  = aAvgFor >= 1.2
+  const homeLeakyDefence = hAvgAgst >= 1.3  // concedes regularly
+  const awayLeakyDefence = aAvgAgst >= 1.3
+  const homeCleanSheet   = hAvgAgst <= 0.9  // tight defence
+  const awayCleanSheet   = aAvgAgst <= 0.9
+
+  // True BTTS signal: BOTH teams score AND BOTH defences are soft
+  const bttsProbable = hAvgFor >= 1.2 && aAvgFor >= 1.1
+                    && homeLeakyDefence && awayLeakyDefence
+
+  // Over 2.5 signal: combined xG is genuinely high (not just average)
+  const highScoring = xTotal >= 3.1 && (homeScoringTeam || awayScoringTeam)
+
+  // Over 1.5 signal: clearly a goals game — at least one attack + at least one soft defence
+  const goalsProbable = xTotal >= 2.7
+                     && (homeScoringTeam || awayScoringTeam)
+                     && (homeLeakyDefence || awayLeakyDefence)
+
+  // Over 0.5 signal: at least one team scores and neither side is a wall
+  const atLeastOneGoal = xTotal >= 1.6
+                      && (hAvgFor >= 0.9 || aAvgFor >= 0.9)
+                      && !(homeCleanSheet && awayCleanSheet)
+
   // ── Decision tree ─────────────────────────────────────────────
-  // Priority order per Emeka's betting strategy:
-  // 1. Over 1.5  →  2. BTTS  →  3. Over 2.5  →  4. Win/Draw  →  5. 1UP  →  6. Handicap
+  // Priority: Over 1.5 → BTTS → Over 2.5 → Win/Draw → 1UP → Handicap → Over 0.5
   let pick: PickType
   let pickLabel: string
   let confidence: number
 
-  // ── 1. OVER 1.5 (most reliable goals market) ──────────────────
-  if (xTotal >= 2.0) {
+  // ── 1. OVER 1.5 (goals game — not just average, needs real evidence) ──
+  if (goalsProbable) {
     pick = 'OVER_1_5'; pickLabel = 'Over 1.5 Goals'
-    confidence = Math.min(83, 56 + Math.round((xTotal - 2.0) * 10))
-    reasoning.push(`${xTotal.toFixed(1)} total goals expected — 2+ very likely`)
-    if (hAvgFor >= 1.3) reasoning.push(`${homeName} scores ${hAvgFor.toFixed(1)} goals/game`)
-    if (aAvgFor >= 1.3) reasoning.push(`${awayName} scores ${aAvgFor.toFixed(1)} goals/game`)
+    confidence = Math.min(83, 52 + Math.round((xTotal - 2.7) * 12))
+    reasoning.push(`${xTotal.toFixed(1)} xG expected — both sides in a scoring mood`)
+    if (homeScoringTeam) reasoning.push(`${homeName} scores ${hAvgFor.toFixed(1)}/game`)
+    if (awayScoringTeam) reasoning.push(`${awayName} scores ${aAvgFor.toFixed(1)}/game`)
+    if (homeLeakyDefence) reasoning.push(`${homeName} concedes ${hAvgAgst.toFixed(1)}/game`)
 
-  // ── 2. BTTS (both teams scoring) ──────────────────────────────
-  } else if (hAvgFor >= 1.2 && aAvgFor >= 1.0 && xTotal >= 1.8) {
+  // ── 2. BTTS (both teams genuinely score and both defences are porous) ─
+  } else if (bttsProbable) {
     pick = 'BTTS'; pickLabel = 'Both Teams to Score'
-    confidence = Math.min(82, 54 + Math.round((xTotal - 1.8) * 12))
-    reasoning.push(`Both teams expected to score — ${xTotal.toFixed(1)} xG combined`)
-    reasoning.push(`${homeName} scores ${hAvgFor.toFixed(1)}/g, ${awayName} scores ${aAvgFor.toFixed(1)}/g`)
+    confidence = Math.min(82, 56 + Math.round((xTotal - 2.3) * 10))
+    reasoning.push(`${homeName} scores ${hAvgFor.toFixed(1)}/g, concedes ${hAvgAgst.toFixed(1)}/g`)
+    reasoning.push(`${awayName} scores ${aAvgFor.toFixed(1)}/g, concedes ${aAvgAgst.toFixed(1)}/g`)
 
-  // ── 3. OVER 2.5 (high-scoring match) ──────────────────────────
-  } else if (xTotal >= 2.8) {
+  // ── 3. OVER 2.5 (proper high-scorer, xG well above average) ──────────
+  } else if (highScoring) {
     pick = 'OVER_2_5'; pickLabel = 'Over 2.5 Goals'
-    confidence = Math.min(82, 50 + Math.round((xTotal - 2.8) * 14))
-    reasoning.push(`High-scoring game expected: ~${xTotal.toFixed(1)} goals`)
-    if (hAvgFor >= 1.5) reasoning.push(`${homeName} averages ${hAvgFor.toFixed(1)} goals/game`)
-    if (aAvgFor >= 1.5) reasoning.push(`${awayName} averages ${aAvgFor.toFixed(1)} goals/game`)
+    confidence = Math.min(82, 50 + Math.round((xTotal - 3.1) * 14))
+    reasoning.push(`High-scoring match expected — ${xTotal.toFixed(1)} total xG`)
+    if (hAvgFor >= 1.6) reasoning.push(`${homeName} averages ${hAvgFor.toFixed(1)} goals/game`)
+    if (aAvgFor >= 1.6) reasoning.push(`${awayName} averages ${aAvgFor.toFixed(1)} goals/game`)
 
-  // ── 4. WIN / DRAW markets ──────────────────────────────────────
+  // ── 4. WIN / DRAW markets (use when there's a real competitive gap) ───
   } else if (dominantHome) {
     pick = 'HOME_WIN'; pickLabel = `${homeName} to Win`
     confidence = Math.min(83, 46 + Math.floor(diff / 2))
+    reasoning.push(`${homeName} strong favourites — ${ptsDiff}-point gap in the standings`)
     if (homeIsScorer) reasoning.push(`${homeName} averages ${hAvgFor.toFixed(1)} goals/game`)
 
   } else if (strongHome) {
     pick = 'HOME_WIN'; pickLabel = `${homeName} to Win`
-    confidence = Math.min(81, 44 + Math.floor(diff / 2))
+    confidence = Math.min(80, 44 + Math.floor(diff / 2))
+    reasoning.push(`${homeName} the clear home favourite`)
 
   } else if (dominantAway) {
     pick = 'AWAY_WIN'; pickLabel = `${awayName} to Win`
     confidence = Math.min(82, 44 + Math.floor(Math.abs(diff) / 2))
+    reasoning.push(`${awayName} clearly the better side despite playing away`)
     if (awayIsScorer) reasoning.push(`${awayName} averages ${aAvgFor.toFixed(1)} goals/game`)
 
   } else if (strongAway) {
     pick = 'AWAY_WIN'; pickLabel = `${awayName} to Win`
-    confidence = Math.min(80, 42 + Math.floor(Math.abs(diff) / 2))
+    confidence = Math.min(79, 42 + Math.floor(Math.abs(diff) / 2))
+    reasoning.push(`${awayName} strong away from home`)
 
-  // ── 5. 1UP (only truly dominant + prolific scorers) ────────────
+  // ── 5. 1UP (only extreme dominance AND prolific scorer) ───────────────
   } else if (extremeHome && homeIsScorer) {
     pick = 'ONE_UP'; pickLabel = `${homeName} 1UP`
     confidence = Math.min(84, 52 + Math.floor(diff / 3))
-    reasoning.push(`${homeName} dominant at home and averaging ${hAvgFor.toFixed(1)} goals/game`)
+    reasoning.push(`${homeName} dominant at home — ${hAvgFor.toFixed(1)} goals/game`)
 
   } else if (extremeAway && awayIsScorer) {
     pick = 'ONE_UP'; pickLabel = `${awayName} 1UP`
     confidence = Math.min(82, 50 + Math.floor(Math.abs(diff) / 3))
     reasoning.push(`${awayName} dominant even away from home`)
 
-  // ── 6. HANDICAP (moderate mismatch, no clear goals signal) ────
+  // ── 6. HANDICAP (moderate mismatch, nothing else qualifies) ──────────
   } else if (moderateHome) {
     pick = 'HANDICAP_PLUS_1'; pickLabel = `${awayName} +1`
     confidence = Math.min(77, 66 + Math.floor(diff / 4))
-    reasoning.push(`${homeName} slight favourite — away unlikely to lose by 2+`)
+    reasoning.push(`${homeName} slight edge — away team unlikely to lose by 2+`)
 
   } else if (moderateAway) {
     pick = 'HANDICAP_PLUS_1'; pickLabel = `${homeName} +1`
     confidence = Math.min(77, 66 + Math.floor(Math.abs(diff) / 4))
-    reasoning.push(`${awayName} slight edge — home unlikely to lose by 2+`)
+    reasoning.push(`${awayName} slight edge — home team unlikely to lose by 2+`)
 
-  // ── Fallback ───────────────────────────────────────────────────
-  } else if (xTotal >= 1.2) {
+  // ── 7. OVER 0.5 (defensive but goals still expected) ─────────────────
+  } else if (atLeastOneGoal) {
     pick = 'OVER_0_5'; pickLabel = 'Over 0.5 Goals'
-    confidence = Math.min(76, 68 + Math.round(xTotal * 4))
-    reasoning.push(`At least one goal expected — ${xTotal.toFixed(1)} xG combined`)
+    confidence = Math.min(78, 64 + Math.round(xTotal * 5))
+    reasoning.push(`Tight defensive match — at least one goal expected`)
+    reasoning.push(`Combined xG: ${xTotal.toFixed(1)} goals`)
 
+  // ── Fallback ──────────────────────────────────────────────────────────
   } else {
     pick = 'HOME_WIN'; pickLabel = `${homeName} to Win`
     confidence = 58
+    reasoning.push(`Low-data match — slight home advantage`)
   }
 
   // Final reasoning padding (home advantage note)
