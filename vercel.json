@@ -1,16 +1,9 @@
 {
   "crons": [
-    {
-      "path": "/api/cron",
-      "schedule": "0 7 * * *"
-    },
-    {
-      "path": "/api/results",
-      "schedule": "0 21 * * *"
-    },
-    {
-      "path": "/api/results",
-      "schedule": "0 23 * * *"
-    }
+    { "path": "/api/cron",           "schedule": "0 7 * * *"  },
+    { "path": "/api/results",        "schedule": "0 21 * * *" },
+    { "path": "/api/results",        "schedule": "0 23 * * *" },
+    { "path": "/api/nba-predictions","schedule": "0 19 * * *" },
+    { "path": "/api/nba-results",    "schedule": "0 9 * * *"  }
   ]
 }

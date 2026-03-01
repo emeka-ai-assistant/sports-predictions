@@ -6,16 +6,17 @@ export default function Nav() {
   const path = usePathname()
 
   const links = [
-    { href: '/',            label: 'Today' },
-    { href: '/history',     label: 'History' },
-    { href: '/accumulator', label: '💰 Accum' },
+    { href: '/',             label: '⚽ Football' },
+    { href: '/basketball',   label: '🏀 NBA'      },
+    { href: '/history',      label: 'History'     },
+    { href: '/accumulator',  label: '💰 Accum'    },
   ]
 
   return (
     <nav className="bg-[#0f1923] border-b border-[#1e3a5f] sticky top-0 z-50">
       <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2">
-          <span className="text-2xl">⚽</span>
+          <span className="text-2xl">⚽🏀</span>
           <span className="font-bold text-white text-lg tracking-tight">
             Sure<span className="text-green-400">Picks</span>
           </span>
