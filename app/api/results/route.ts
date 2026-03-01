@@ -26,17 +26,20 @@ function pickIsForHome(pickLabel: string, homeTeam: string, awayTeam: string): b
  * Evaluate result using full-time AND half-time score.
  *
  * ONE_UP  — "Team leads by 1+ goal at ANY POINT = WIN"
- *   WIN:  Team wins the match (must have led)
- *         OR team was leading at half-time (they had a lead, regardless of final result)
- *   LOSS: 0-0 draw (never scored / led)
- *         OR team lost without ever leading at HT
- *   VOID: Ambiguous — drew from equal HT, or scored but can't determine who went first
+ *   WIN:  Team wins the match (they definitely led at some point)
+ *         OR team was LEADING at half-time (they had the lead, even if they later
+ *         drew or lost — e.g. won 2-0 then lost 2-3 but the 2-0 counts)
+ *   LOSS: Team scored 0 goals total — mathematically impossible to have led
+ *   VOID: Everything else — e.g. team scored but lost/drew, or was losing/level at HT.
+ *         A team can score at 10' (1-0 lead), concede 3 before HT (HT 1-3), and
+ *         the 1UP is still a WIN — but HT score alone can't confirm this.
+ *         VOID = not counted as loss; awaiting goal-timing API for resolution.
  *
  * TWO_UP  — "Team leads by 2+ goals at ANY POINT = WIN"
- *   WIN:  Final margin ≥ 2 (they were at least 2 up at some point)
- *         OR HT margin ≥ 2
- *   LOSS: Drew or lost (never had a 2-goal cushion)
- *   VOID: Won by exactly 1 but scored 2+ goals (might have been 2-0 at some point)
+ *   WIN:  FT margin ≥ 2 (definitely had a 2-goal lead)
+ *         OR HT margin ≥ 2 (were 2 up at the break)
+ *   LOSS: Team scored 0 or 1 goal total — impossible to have led by 2
+ *   VOID: Scored 2+ but final margin < 2 — might have led by 2 before conceding
  */
 function evaluateResult(
   pick: PickType,
@@ -74,26 +77,25 @@ function evaluateResult(
 
     case 'ONE_UP': {
       const forHome = pickIsForHome(pickLabel, homeTeam, awayTeam)
-      const pickFT    = forHome ? homeGoals : awayGoals
-      const oppFT     = forHome ? awayGoals : homeGoals
-      const pickHT    = forHome ? htHome    : htAway
-      const oppHT     = forHome ? htAway    : htHome
-      const ftMargin  = pickFT - oppFT
+      const pickFT  = forHome ? homeGoals : awayGoals
+      const oppFT   = forHome ? awayGoals : homeGoals
+      const pickHT  = forHome ? htHome    : htAway
+      const oppHT   = forHome ? htAway    : htHome
 
-      // Team won — they MUST have led at some point
-      if (ftMargin > 0) return 'WIN'
+      // ✅ WIN: Team wins the match — they MUST have led at some point
+      if (pickFT > oppFT) return 'WIN'
 
-      // Team was leading at half-time — they had a lead, WIN regardless of FT
+      // ✅ WIN: Team was leading at half-time — they had the lead (even if they
+      //         later drew or lost in the second half)
       if (pickHT > oppHT) return 'WIN'
 
-      // 0-0 draw or team never scored — never led
+      // ❌ LOSS: Team never scored at all — impossible to have led
       if (pickFT === 0) return 'LOSS'
 
-      // Team lost and was losing at HT — never led
-      if (ftMargin < 0 && pickHT <= oppHT) return 'LOSS'
-
-      // Ambiguous: drew from equal HT, or scored while behind at HT — can't
-      // determine without goal timings. Mark VOID so it doesn't count as a loss.
+      // ⬜ VOID: Anything else — e.g. team scored but lost/drew, HT was level
+      //         or team was losing at HT (could have scored first before falling
+      //         behind — e.g. scored at 10', then conceded 3 before HT).
+      //         Cannot confirm without goal timings. Not counted as a loss.
       return 'VOID'
     }
 
@@ -106,16 +108,19 @@ function evaluateResult(
       const ftMargin = pickFT - oppFT
       const htMargin = pickHT - oppHT
 
-      // Final margin ≥ 2 — definitely led by 2 at some point
+      // ✅ WIN: FT margin >= 2 — definitely had a 2-goal lead at some point
       if (ftMargin >= 2) return 'WIN'
 
-      // HT margin ≥ 2 — were 2 up at the break
+      // ✅ WIN: HT margin >= 2 — were 2 up at half-time (even if they later drew/lost)
       if (htMargin >= 2) return 'WIN'
 
-      // Won by exactly 1 but scored 2+ — might have been 2-0 before conceding
-      if (ftMargin === 1 && pickFT >= 2) return 'VOID'
+      // ❌ LOSS: Scored 0 or 1 goal total — mathematically impossible to have led by 2
+      if (pickFT <= 1) return 'LOSS'
 
-      return 'LOSS'
+      // ⬜ VOID: Scored 2+ goals but final margin < 2 (drew or lost after conceding)
+      //          e.g. went 2-0 up then conceded to end 2-2 or 2-3 — might have
+      //          had the 2-goal lead. Can't confirm without goal timings.
+      return 'VOID'
     }
 
     case 'HANDICAP_PLUS_1': {

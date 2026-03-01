@@ -200,9 +200,17 @@ export default function PredictionCard({ prediction: p, onUpdate, selected, onTo
         </div>
 
         {/* VOID explanation for 1UP/2UP */}
-        {p.result === 'VOID' && (p.pick === 'ONE_UP' || p.pick === 'TWO_UP') && (
+        {p.result === 'VOID' && p.pick === 'ONE_UP' && (
           <p className="mt-2 text-[11px] text-gray-500 italic">
-            ⬜ Marked void — goal timings unavailable to confirm lead. Not counted as a loss.
+            ⬜ Void — team scored but we can't confirm they led first without goal timings.
+            (e.g. scored at 10' then conceded 3 before HT — would still be a WIN).
+            Not counted as a loss.
+          </p>
+        )}
+        {p.result === 'VOID' && p.pick === 'TWO_UP' && (
+          <p className="mt-2 text-[11px] text-gray-500 italic">
+            ⬜ Void — team scored 2+ goals but final margin &lt; 2. May have led by 2
+            at some point before conceding. Not counted as a loss.
           </p>
         )}
       </div>
