@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation'
 import PredictionCard from '@/components/PredictionCard'
 import StatsBar from '@/components/StatsBar'
 import { Prediction } from '@/lib/types'
-import { getTodayPredictions, upsertPredictions, getStats, getLastAccumulatorAmount } from '@/lib/storage'
+import { getTodayPredictions, upsertPredictions, getStats, getLastAccumulatorAmount, clearLocalPredictions } from '@/lib/storage'
 
 export default function HomePage() {
   const router = useRouter()
@@ -24,6 +24,9 @@ export default function HomePage() {
   }, [])
 
   const fetchPredictions = useCallback(async (force = false) => {
+    // On force refresh — clear localStorage so stale browser cache doesn't persist
+    if (force) clearLocalPredictions()
+
     const stored = await getTodayPredictions()
     if (stored.length > 0 && !force) {
       setPredictions(stored)

@@ -71,6 +71,12 @@ function localGet(): Prediction[] {
   } catch { return [] }
 }
 
+/** Wipe all locally cached predictions (called on force refresh) */
+export function clearLocalPredictions() {
+  if (typeof window === 'undefined') return
+  localStorage.removeItem(LOCAL_KEY)
+}
+
 function localSet(preds: Prediction[]) {
   if (typeof window === 'undefined') return
   localStorage.setItem(LOCAL_KEY, JSON.stringify(preds))
