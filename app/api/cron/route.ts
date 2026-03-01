@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { revalidateTag } from 'next/cache'
 import { getTodayFixtures, prefetchAllStandings, getH2H } from '@/lib/football-api'
 import { selectTopPicks } from '@/lib/predictor'
-import { enrichWithOdds } from '@/lib/odds-api'
+// import { enrichWithOdds } from '@/lib/odds-api'  // disabled until Sportybet integration
 import { supabase } from '@/lib/supabase'
 import { format } from 'date-fns'
 import { Prediction } from '@/lib/types'
@@ -85,15 +85,8 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    // 6. Auto-fetch odds
-    const oddsMap = await enrichWithOdds(rawPredictions)
-    const predictionsWithOdds: Prediction[] = rawPredictions.map(p => ({
-      ...p,
-      odds: oddsMap.get(`${p.homeTeam}|${p.awayTeam}`) ?? undefined,
-    }))
-
-    // Filter out picks where odds are below 1.05 (not worth betting)
-    const predictions = predictionsWithOdds.filter(p => !p.odds || p.odds >= 1.05)
+    // Odds disabled until Sportybet integration is available
+    const predictions: Prediction[] = rawPredictions
 
     // 7. Save predictions to Supabase (clear today's first to avoid stale picks)
     await supabase.from('predictions').delete().eq('match_date', today)
@@ -123,7 +116,6 @@ export async function GET(request: NextRequest) {
       match: `${p.homeTeam} vs ${p.awayTeam}`,
       pick: p.pickLabel,
       confidence: p.confidence,
-      odds: p.odds,
       kickoff: p.kickoff,
     }))
 

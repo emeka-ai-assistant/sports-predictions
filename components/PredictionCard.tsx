@@ -2,7 +2,7 @@
 import { useState } from 'react'
 import Image from 'next/image'
 import { Prediction, ResultType } from '@/lib/types'
-import { setOdds, setResult } from '@/lib/storage'
+import { setResult } from '@/lib/storage'
 
 interface Props {
   prediction: Prediction
@@ -78,23 +78,10 @@ function PickTooltip({ pick }: { pick: string }) {
 }
 
 export default function PredictionCard({ prediction: p, onUpdate, selected, onToggleSelect }: Props) {
-  const [oddsInput, setOddsInput] = useState(p.odds ? String(p.odds) : '')
-  const [editingOdds, setEditingOdds] = useState(false)
   const [scoreH, setScoreH] = useState(p.homeScore !== undefined ? String(p.homeScore) : '')
   const [scoreA, setScoreA] = useState(p.awayScore !== undefined ? String(p.awayScore) : '')
   const [editingScore, setEditingScore] = useState(false)
   const [saving, setSaving] = useState(false)
-
-  const handleSaveOdds = async () => {
-    const val = parseFloat(oddsInput)
-    if (!isNaN(val) && val > 1) {
-      setSaving(true)
-      await setOdds(p.id, val)
-      setSaving(false)
-      onUpdate()
-    }
-    setEditingOdds(false)
-  }
 
   const handleResult = async (result: ResultType) => {
     const hs = scoreH !== '' ? parseInt(scoreH) : undefined
@@ -155,7 +142,7 @@ export default function PredictionCard({ prediction: p, onUpdate, selected, onTo
       </div>
 
       <div className={`p-4 ${isSelectable ? 'cursor-pointer' : ''}`} onClick={isSelectable ? () => onToggleSelect!(p.id) : undefined}>
-        {/* Teams */}
+        {/* Teams + Score */}
         <div className="flex items-center gap-2 mb-3">
           <div className="flex-1 flex items-center gap-2 min-w-0">
             {p.homeCrest && (
@@ -165,7 +152,7 @@ export default function PredictionCard({ prediction: p, onUpdate, selected, onTo
           </div>
           <div className="flex-shrink-0 px-1 text-center">
             {p.homeScore !== undefined && p.awayScore !== undefined ? (
-              <span className="font-bold text-white">{p.homeScore}–{p.awayScore}</span>
+              <span className="font-bold text-white text-base">{p.homeScore}–{p.awayScore}</span>
             ) : (
               <span className="text-gray-600 text-xs font-medium">vs</span>
             )}
@@ -191,7 +178,7 @@ export default function PredictionCard({ prediction: p, onUpdate, selected, onTo
         </div>
 
         {/* Reasoning */}
-        <div className="space-y-1 mb-4">
+        <div className="space-y-1">
           {p.reasoning.map((r, i) => (
             <p key={i} className="text-xs text-gray-400 flex items-start gap-1.5">
               <span className="text-green-400 mt-0.5 flex-shrink-0">▸</span>
@@ -201,60 +188,33 @@ export default function PredictionCard({ prediction: p, onUpdate, selected, onTo
         </div>
       </div>
 
-      {/* Odds + Result (always clickable, not part of select zone) */}
-      <div className="px-4 pb-4">
-        <div className="border-t border-[#1e3a5f] pt-3 flex flex-wrap items-center gap-2">
-          {/* Odds input */}
-          {editingOdds ? (
-            <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
-              <input
-                type="number" step="0.01" min="1.01" placeholder="e.g. 1.85"
-                value={oddsInput}
-                onChange={e => setOddsInput(e.target.value)}
-                className="w-24 bg-[#1a2f4a] border border-[#2a4f7f] rounded-lg px-2 py-1 text-sm text-white focus:outline-none focus:border-green-400"
-                autoFocus
-                onKeyDown={e => e.key === 'Enter' && handleSaveOdds()}
-              />
-              <button onClick={handleSaveOdds} className="px-2 py-1 bg-green-500 hover:bg-green-400 text-black text-xs font-bold rounded-lg">Save</button>
-              <button onClick={() => setEditingOdds(false)} className="px-2 py-1 bg-white/10 text-gray-300 text-xs rounded-lg">✕</button>
-            </div>
+      {/* Result section */}
+      <div className="px-4 pb-4 pt-1" onClick={e => e.stopPropagation()}>
+        <div className="border-t border-[#1e3a5f] pt-3 flex justify-end">
+          {!p.result ? (
+            editingScore ? (
+              <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                <input type="number" min="0" placeholder="H" value={scoreH} onChange={e => setScoreH(e.target.value)}
+                  className="w-11 bg-[#1a2f4a] border border-[#2a4f7f] rounded px-1.5 py-1 text-sm text-white text-center focus:outline-none" />
+                <span className="text-gray-500 text-sm">–</span>
+                <input type="number" min="0" placeholder="A" value={scoreA} onChange={e => setScoreA(e.target.value)}
+                  className="w-11 bg-[#1a2f4a] border border-[#2a4f7f] rounded px-1.5 py-1 text-sm text-white text-center focus:outline-none" />
+                <button onClick={() => handleResult('WIN')} className="px-2.5 py-1 bg-green-600 hover:bg-green-500 text-white text-xs font-bold rounded-lg">✅</button>
+                <button onClick={() => handleResult('LOSS')} className="px-2.5 py-1 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded-lg">❌</button>
+                <button onClick={() => handleResult('VOID')} className="px-2 py-1 bg-gray-600 hover:bg-gray-500 text-white text-xs rounded-lg">⬜</button>
+                <button onClick={() => setEditingScore(false)} className="px-2 py-1 bg-white/10 text-gray-400 text-xs rounded-lg">✕</button>
+              </div>
+            ) : (
+              <button onClick={() => setEditingScore(true)}
+                className="px-3 py-1.5 bg-[#1a2f4a] hover:bg-[#1e3a5f] border border-[#2a4f7f] rounded-lg text-xs text-gray-300 hover:text-white transition-colors">
+                Mark Result
+              </button>
+            )
           ) : (
-            <button
-              onClick={e => { e.stopPropagation(); setEditingOdds(true) }}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1a2f4a] hover:bg-[#1e3a5f] border border-[#2a4f7f] rounded-lg text-sm transition-colors"
-            >
-              <span className="text-yellow-400">💰</span>
-              <span className="text-white font-medium">{p.odds ? `${p.odds}x` : 'Add Odds'}</span>
+            <button onClick={handleReset} className="text-xs text-gray-700 hover:text-gray-400 transition-colors">
+              Reset
             </button>
           )}
-
-          {/* Result section */}
-          <div className="ml-auto" onClick={e => e.stopPropagation()}>
-            {!p.result ? (
-              editingScore ? (
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <input type="number" min="0" placeholder="H" value={scoreH} onChange={e => setScoreH(e.target.value)}
-                    className="w-11 bg-[#1a2f4a] border border-[#2a4f7f] rounded px-1.5 py-1 text-sm text-white text-center focus:outline-none" />
-                  <span className="text-gray-500 text-sm">–</span>
-                  <input type="number" min="0" placeholder="A" value={scoreA} onChange={e => setScoreA(e.target.value)}
-                    className="w-11 bg-[#1a2f4a] border border-[#2a4f7f] rounded px-1.5 py-1 text-sm text-white text-center focus:outline-none" />
-                  <button onClick={() => handleResult('WIN')} className="px-2.5 py-1 bg-green-600 hover:bg-green-500 text-white text-xs font-bold rounded-lg">✅</button>
-                  <button onClick={() => handleResult('LOSS')} className="px-2.5 py-1 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded-lg">❌</button>
-                  <button onClick={() => handleResult('VOID')} className="px-2 py-1 bg-gray-600 hover:bg-gray-500 text-white text-xs rounded-lg">⬜</button>
-                  <button onClick={() => setEditingScore(false)} className="px-2 py-1 bg-white/10 text-gray-400 text-xs rounded-lg">✕</button>
-                </div>
-              ) : (
-                <button onClick={() => setEditingScore(true)}
-                  className="px-3 py-1.5 bg-[#1a2f4a] hover:bg-[#1e3a5f] border border-[#2a4f7f] rounded-lg text-xs text-gray-300 hover:text-white transition-colors">
-                  Mark Result
-                </button>
-              )
-            ) : (
-              <button onClick={handleReset} className="text-xs text-gray-700 hover:text-gray-400 transition-colors">
-                Reset
-              </button>
-            )}
-          </div>
         </div>
       </div>
     </div>

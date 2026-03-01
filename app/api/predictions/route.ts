@@ -4,7 +4,7 @@ import { selectTopPicks } from '@/lib/predictor'
 import { Prediction } from '@/lib/types'
 import { format } from 'date-fns'
 import { supabase } from '@/lib/supabase'
-import { enrichWithOdds } from '@/lib/odds-api'
+// import { enrichWithOdds } from '@/lib/odds-api'  // disabled until Sportybet integration
 
 export const dynamic = 'force-dynamic'
 
@@ -86,15 +86,8 @@ export async function GET(req: Request) {
       }
     })
 
-    // 6. Auto-fetch odds
-    const oddsMap = await enrichWithOdds(rawPredictions)
-    const predictionsWithOdds: Prediction[] = rawPredictions.map(p => ({
-      ...p,
-      odds: oddsMap.get(`${p.homeTeam}|${p.awayTeam}`) ?? undefined,
-    }))
-
-    // Filter out picks where odds are too low to be worth betting (< 1.05)
-    const predictions = predictionsWithOdds.filter(p => !p.odds || p.odds >= 1.05)
+    // Odds disabled until Sportybet integration is available
+    const predictions: Prediction[] = rawPredictions
 
     // 7. Save to Supabase
     const rows = predictions.map(pred => ({

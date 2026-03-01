@@ -3,6 +3,14 @@
     {
       "path": "/api/cron",
       "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/results",
+      "schedule": "0 21 * * *"
+    },
+    {
+      "path": "/api/results",
+      "schedule": "0 23 * * *"
     }
   ]
 }

@@ -75,12 +75,7 @@ export default function HomePage() {
   const selectAll = () => setSelectedIds(new Set(predictions.map(p => p.id)))
   const clearAll = () => setSelectedIds(new Set())
 
-  // Combined odds = product of selected picks that have odds set
   const selectedPicks = predictions.filter(p => selectedIds.has(p.id))
-  const picksWithOdds = selectedPicks.filter(p => p.odds && p.odds > 1)
-  const combinedOdds = picksWithOdds.reduce((acc, p) => acc * p.odds!, 1)
-  const potentialReturn = combinedOdds > 1 ? (nextAmount * combinedOdds).toFixed(2) : null
-  const missingOdds = selectedIds.size - picksWithOdds.length
 
   const today = new Date().toLocaleDateString('en-GB', {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
@@ -88,11 +83,10 @@ export default function HomePage() {
 
   const handleSaveToAccumulator = () => {
     if (selectedIds.size === 0) return
-    const summary = picksWithOdds.map(p =>
-      `${p.homeTeam} vs ${p.awayTeam} — ${p.pickLabel}${p.odds ? ` @ ${p.odds}` : ''}`
+    const summary = selectedPicks.map(p =>
+      `${p.homeTeam} vs ${p.awayTeam} — ${p.pickLabel}`
     )
     const params = new URLSearchParams({
-      odds: combinedOdds.toFixed(2),
       amount: String(nextAmount),
       picks: String(selectedIds.size),
       summary: JSON.stringify(summary),
@@ -181,7 +175,7 @@ export default function HomePage() {
             ))}
           </div>
 
-          {/* Combined Odds Bar */}
+          {/* Accumulator Bar */}
           {selectedIds.size > 0 && (
             <div className="mt-6 bg-[#0f1923] border border-green-500/30 rounded-xl p-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -189,51 +183,22 @@ export default function HomePage() {
                   <div className="text-xs text-gray-500 font-medium uppercase tracking-wide">
                     {selectedIds.size} pick{selectedIds.size !== 1 ? 's' : ''} selected
                   </div>
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <div className="flex items-baseline gap-1.5">
-                      <span className="text-xs text-gray-500">Combined odds:</span>
-                      {picksWithOdds.length > 0 ? (
-                        <span className="text-xl font-bold text-yellow-400">{combinedOdds.toFixed(2)}x</span>
-                      ) : (
-                        <span className="text-sm text-gray-600">—</span>
-                      )}
-                    </div>
-                    {missingOdds > 0 && (
-                      <span className="text-xs text-orange-400">
-                        ⚠️ {missingOdds} pick{missingOdds > 1 ? 's' : ''} missing odds
+                  <div className="flex flex-wrap gap-1.5 mt-1">
+                    {selectedPicks.map(p => (
+                      <span key={p.id} className="text-xs bg-white/5 rounded-lg px-2 py-1 text-gray-400">
+                        {p.homeTeam} <span className="text-white/40">vs</span> {p.awayTeam}
+                        <span className="text-green-400 ml-1">· {p.pickLabel}</span>
                       </span>
-                    )}
+                    ))}
                   </div>
-                  {potentialReturn && (
-                    <div className="flex items-baseline gap-1.5">
-                      <span className="text-xs text-gray-500">Stake: ₦{nextAmount.toLocaleString()}</span>
-                      <span className="text-xs text-gray-600">→</span>
-                      <span className="text-sm font-bold text-green-400">₦{parseFloat(potentialReturn).toLocaleString()}</span>
-                      <span className="text-xs text-gray-600">if all win</span>
-                    </div>
-                  )}
                 </div>
-
                 <button
                   onClick={handleSaveToAccumulator}
-                  disabled={picksWithOdds.length === 0}
-                  className="flex items-center gap-2 px-4 py-2.5 bg-green-500 hover:bg-green-400 disabled:opacity-40 disabled:cursor-not-allowed text-black font-bold rounded-xl text-sm transition-colors whitespace-nowrap"
+                  className="flex items-center gap-2 px-4 py-2.5 bg-green-500 hover:bg-green-400 text-black font-bold rounded-xl text-sm transition-colors whitespace-nowrap"
                 >
                   💰 Save to Accumulator
                 </button>
               </div>
-
-              {/* Per-pick breakdown */}
-              {picksWithOdds.length > 0 && (
-                <div className="mt-3 pt-3 border-t border-white/5 flex flex-wrap gap-2">
-                  {picksWithOdds.map(p => (
-                    <span key={p.id} className="text-xs bg-white/5 rounded-lg px-2 py-1 text-gray-400">
-                      {p.homeTeam} <span className="text-white/40">vs</span> {p.awayTeam}
-                      <span className="text-yellow-400 ml-1">@ {p.odds}x</span>
-                    </span>
-                  ))}
-                </div>
-              )}
             </div>
           )}
         </>
