@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { revalidateTag } from 'next/cache'
-import { getTodayFixtures, prefetchAllStandings } from '@/lib/football-api'
+import { getTodayFixtures, prefetchAllStandings, getH2H } from '@/lib/football-api'
 import { selectTopPicks } from '@/lib/predictor'
 import { enrichWithOdds } from '@/lib/odds-api'
 import { supabase } from '@/lib/supabase'
@@ -44,8 +44,16 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    // 4. Run prediction engine
-    const picks = selectTopPicks(fixtures, standingsMap, 5)
+    // 4. Fetch H2H for each fixture
+    const h2hMap = new Map<number, any>()
+    for (const fixture of fixtures) {
+      const h2h = await getH2H(fixture.id)
+      if (h2h) h2hMap.set(fixture.id, h2h)
+      await new Promise(r => setTimeout(r, 350))
+    }
+
+    // 5. Run prediction engine with H2H data
+    const picks = selectTopPicks(fixtures, standingsMap, h2hMap, 5)
 
     if (picks.length === 0) {
       return NextResponse.json({

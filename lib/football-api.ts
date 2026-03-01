@@ -1,4 +1,4 @@
-import { Fixture, TeamStanding } from './types'
+import { Fixture, TeamStanding, H2HStats } from './types'
 import { supabase } from './supabase'
 
 const BASE_URL = 'https://api.football-data.org/v4'
@@ -121,6 +121,44 @@ export async function getMultipleStandings(codes: string[]): Promise<Map<string,
     await delay(100) // small delay — mostly cache reads, so no rate limit concern
   }
   return map
+}
+
+/**
+ * Fetch head-to-head stats for a fixture.
+ * Returns historical goal averages, over-rates, and BTTS rate.
+ */
+export async function getH2H(fixtureId: number): Promise<H2HStats | null> {
+  try {
+    const data = await apiFetch<{ matches: any[] }>(
+      `/matches/${fixtureId}/head2head?limit=10`,
+      `h2h-${fixtureId}`
+    )
+    const matches = data.matches || []
+    if (matches.length === 0) return null
+
+    const settled = matches.filter(m =>
+      m.score?.fullTime?.home !== null && m.score?.fullTime?.away !== null
+    )
+    if (settled.length === 0) return null
+
+    const totalGoals = settled.map(m =>
+      (m.score.fullTime.home || 0) + (m.score.fullTime.away || 0)
+    )
+
+    return {
+      meetings: settled.length,
+      avgGoals: totalGoals.reduce((a, b) => a + b, 0) / settled.length,
+      over05Rate: totalGoals.filter(g => g >= 1).length / settled.length,
+      over15Rate: totalGoals.filter(g => g >= 2).length / settled.length,
+      over25Rate: totalGoals.filter(g => g >= 3).length / settled.length,
+      bttsRate: settled.filter(m =>
+        m.score.fullTime.home > 0 && m.score.fullTime.away > 0
+      ).length / settled.length,
+    }
+  } catch (e) {
+    console.error(`Failed to fetch H2H for fixture ${fixtureId}:`, e)
+    return null
+  }
 }
 
 /**

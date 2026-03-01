@@ -45,10 +45,20 @@ export interface Fixture {
   }
 }
 
+export interface H2HStats {
+  meetings: number       // number of recent meetings analysed
+  avgGoals: number       // average total goals per meeting
+  over05Rate: number     // % of meetings with 1+ goal (0–1)
+  over15Rate: number     // % of meetings with 2+ goals (0–1)
+  over25Rate: number     // % of meetings with 3+ goals (0–1)
+  bttsRate: number       // % of meetings where both scored (0–1)
+}
+
 export interface AnalysedFixture {
   fixture: Fixture
   homeStanding?: TeamStanding
   awayStanding?: TeamStanding
+  h2h?: H2HStats
   pick: PickType
   pickLabel: string
   confidence: number

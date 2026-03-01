@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getTodayFixtures, getMultipleStandings } from '@/lib/football-api'
+import { getTodayFixtures, getMultipleStandings, getH2H } from '@/lib/football-api'
 import { selectTopPicks } from '@/lib/predictor'
 import { Prediction } from '@/lib/types'
 import { format } from 'date-fns'
@@ -41,12 +41,20 @@ export async function GET(req: Request) {
       })
     }
 
-    // 3. Fetch standings sequentially (avoids free-tier rate limit of 10 req/min)
+    // 3. Fetch standings from Supabase cache (fast, no rate limit)
     const codes = [...new Set(fixtures.map(f => f.competition.code))]
     const standingsMap = await getMultipleStandings(codes)
 
-    // 4. Run prediction engine — 65% confidence threshold, up to 5 picks
-    const picks = selectTopPicks(fixtures, standingsMap, 5)
+    // 4. Fetch H2H data for each fixture (sequential, 350ms delay)
+    const h2hMap = new Map<number, any>()
+    for (const fixture of fixtures) {
+      const h2h = await getH2H(fixture.id)
+      if (h2h) h2hMap.set(fixture.id, h2h)
+      await new Promise(r => setTimeout(r, 350))
+    }
+
+    // 5. Run prediction engine with standings + H2H
+    const picks = selectTopPicks(fixtures, standingsMap, h2hMap, 5)
 
     if (picks.length === 0) {
       return NextResponse.json({

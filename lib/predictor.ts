@@ -1,4 +1,4 @@
-import { Fixture, TeamStanding, AnalysedFixture, PickType } from './types'
+import { Fixture, TeamStanding, AnalysedFixture, PickType, H2HStats } from './types'
 
 function parseForm(form: string | null): number {
   if (!form) return 0
@@ -17,7 +17,8 @@ function getFormString(form: string | null): string {
 function analyseMatch(
   fixture: Fixture,
   home?: TeamStanding,
-  away?: TeamStanding
+  away?: TeamStanding,
+  h2h?: H2HStats | null
 ): { pick: PickType; pickLabel: string; confidence: number; reasoning: string[] } {
   const reasoning: string[] = []
   const homeName = fixture.homeTeam.name
@@ -92,30 +93,37 @@ function analyseMatch(
   const awayIsScorer   = aAvgFor >= 1.8 && hAvgAgst >= 1.2
 
   // ── Scoring profiles ──────────────────────────────────────────
-  // Is each team genuinely a scoring side?
-  const homeScoringTeam  = hAvgFor >= 1.4  // scores regularly
+  const homeScoringTeam  = hAvgFor >= 1.4
   const awayScoringTeam  = aAvgFor >= 1.2
-  const homeLeakyDefence = hAvgAgst >= 1.3  // concedes regularly
+  const homeLeakyDefence = hAvgAgst >= 1.3
   const awayLeakyDefence = aAvgAgst >= 1.3
-  const homeCleanSheet   = hAvgAgst <= 0.9  // tight defence
+  const homeCleanSheet   = hAvgAgst <= 0.9
   const awayCleanSheet   = aAvgAgst <= 0.9
+  // When two attack-minded teams meet, solid defences still get exposed
+  const bothAttacking = hAvgFor >= 1.4 && aAvgFor >= 1.3
 
-  // True BTTS signal: BOTH teams score AND BOTH defences are soft
-  const bttsProbable = hAvgFor >= 1.2 && aAvgFor >= 1.1
-                    && homeLeakyDefence && awayLeakyDefence
+  // H2H signals — historical meetings override season-long defensive stats
+  const h2hOver15 = h2h && h2h.meetings >= 3 && h2h.over15Rate >= 0.6
+  const h2hOver25 = h2h && h2h.meetings >= 3 && h2h.over25Rate >= 0.6
+  const h2hBtts   = h2h && h2h.meetings >= 3 && h2h.bttsRate   >= 0.6
+  const h2hOver05 = h2h && h2h.meetings >= 3 && h2h.over05Rate >= 0.8
 
-  // Over 2.5 signal: combined xG is genuinely high (not just average)
-  const highScoring = xTotal >= 3.1 && (homeScoringTeam || awayScoringTeam)
+  // BTTS: both teams score AND both defences are soft (OR H2H confirms it)
+  const bttsProbable = h2hBtts
+    || (hAvgFor >= 1.2 && aAvgFor >= 1.1 && homeLeakyDefence && awayLeakyDefence)
 
-  // Over 1.5 signal: clearly a goals game — at least one attack + at least one soft defence
-  const goalsProbable = xTotal >= 2.7
-                     && (homeScoringTeam || awayScoringTeam)
-                     && (homeLeakyDefence || awayLeakyDefence)
+  // Over 2.5: high xG OR H2H confirms regularly high-scoring
+  const highScoring = h2hOver25
+    || (xTotal >= 3.1 && (homeScoringTeam || awayScoringTeam))
 
-  // Over 0.5 signal: at least one team scores and neither side is a wall
-  const atLeastOneGoal = xTotal >= 1.6
-                      && (hAvgFor >= 0.9 || aAvgFor >= 0.9)
-                      && !(homeCleanSheet && awayCleanSheet)
+  // Over 1.5: goals game — regular season stats OR H2H history OR two attackers meeting
+  const goalsProbable = h2hOver15
+    || (xTotal >= 2.7 && (homeScoringTeam || awayScoringTeam) && (homeLeakyDefence || awayLeakyDefence))
+    || (xTotal >= 2.6 && bothAttacking)  // two attacking teams always produce goals
+
+  // Over 0.5: at least one team scores and defences aren't both watertight
+  const atLeastOneGoal = h2hOver05
+    || (xTotal >= 1.6 && (hAvgFor >= 0.9 || aAvgFor >= 0.9) && !(homeCleanSheet && awayCleanSheet))
 
   // ── Decision tree ─────────────────────────────────────────────
   // Priority: Over 1.5 → BTTS → Over 2.5 → Win/Draw → 1UP → Handicap → Over 0.5
@@ -123,26 +131,40 @@ function analyseMatch(
   let pickLabel: string
   let confidence: number
 
-  // ── 1. OVER 1.5 (goals game — not just average, needs real evidence) ──
+  // ── 1. OVER 1.5 (goals game — needs real evidence, not just average xG) ──
   if (goalsProbable) {
     pick = 'OVER_1_5'; pickLabel = 'Over 1.5 Goals'
-    confidence = Math.min(83, 52 + Math.round((xTotal - 2.7) * 12))
-    reasoning.push(`${xTotal.toFixed(1)} xG expected — both sides in a scoring mood`)
-    if (homeScoringTeam) reasoning.push(`${homeName} scores ${hAvgFor.toFixed(1)}/game`)
-    if (awayScoringTeam) reasoning.push(`${awayName} scores ${aAvgFor.toFixed(1)}/game`)
-    if (homeLeakyDefence) reasoning.push(`${homeName} concedes ${hAvgAgst.toFixed(1)}/game`)
+    const h2hBoost = h2hOver15 ? 5 : 0
+    confidence = Math.min(84, 52 + Math.round((xTotal - 2.7) * 10) + h2hBoost)
+    if (h2hOver15 && h2h) {
+      reasoning.push(`H2H history: ${(h2h.over15Rate * 100).toFixed(0)}% of last ${h2h.meetings} meetings had 2+ goals`)
+      reasoning.push(`Average ${h2h.avgGoals.toFixed(1)} goals per meeting between these sides`)
+    } else {
+      reasoning.push(`${xTotal.toFixed(1)} xG expected — both sides in a scoring mood`)
+      if (homeScoringTeam) reasoning.push(`${homeName} scores ${hAvgFor.toFixed(1)}/game`)
+      if (awayScoringTeam) reasoning.push(`${awayName} scores ${aAvgFor.toFixed(1)}/game`)
+    }
+    if (bothAttacking && !h2hOver15) reasoning.push(`Two attack-minded sides — goals likely`)
 
   // ── 2. BTTS (both teams genuinely score and both defences are porous) ─
   } else if (bttsProbable) {
     pick = 'BTTS'; pickLabel = 'Both Teams to Score'
-    confidence = Math.min(82, 56 + Math.round((xTotal - 2.3) * 10))
+    const h2hBoost = h2hBtts ? 6 : 0
+    confidence = Math.min(83, 56 + Math.round((xTotal - 2.3) * 10) + h2hBoost)
+    if (h2hBtts && h2h) {
+      reasoning.push(`H2H: both teams scored in ${(h2h.bttsRate * 100).toFixed(0)}% of last ${h2h.meetings} meetings`)
+    }
     reasoning.push(`${homeName} scores ${hAvgFor.toFixed(1)}/g, concedes ${hAvgAgst.toFixed(1)}/g`)
     reasoning.push(`${awayName} scores ${aAvgFor.toFixed(1)}/g, concedes ${aAvgAgst.toFixed(1)}/g`)
 
   // ── 3. OVER 2.5 (proper high-scorer, xG well above average) ──────────
   } else if (highScoring) {
     pick = 'OVER_2_5'; pickLabel = 'Over 2.5 Goals'
-    confidence = Math.min(82, 50 + Math.round((xTotal - 3.1) * 14))
+    const h2hBoost = h2hOver25 ? 6 : 0
+    confidence = Math.min(83, 50 + Math.round((xTotal - 3.1) * 14) + h2hBoost)
+    if (h2hOver25 && h2h) {
+      reasoning.push(`H2H: ${(h2h.over25Rate * 100).toFixed(0)}% of last ${h2h.meetings} meetings had 3+ goals`)
+    }
     reasoning.push(`High-scoring match expected — ${xTotal.toFixed(1)} total xG`)
     if (hAvgFor >= 1.6) reasoning.push(`${homeName} averages ${hAvgFor.toFixed(1)} goals/game`)
     if (aAvgFor >= 1.6) reasoning.push(`${awayName} averages ${aAvgFor.toFixed(1)} goals/game`)
@@ -220,6 +242,7 @@ const THRESHOLDS = [75, 68, 62]
 export function selectTopPicks(
   fixtures: Fixture[],
   standingsMap: Map<string, TeamStanding[]>,
+  h2hMap: Map<number, H2HStats | null> = new Map(),
   count = TARGET_PICKS
 ): AnalysedFixture[] {
   const analysed: AnalysedFixture[] = []
@@ -230,8 +253,9 @@ export function selectTopPicks(
     const awayStanding = standings.find(s => s.team.id === fixture.awayTeam.id)
     if (!homeStanding || !awayStanding) continue
 
-    const analysis = analyseMatch(fixture, homeStanding, awayStanding)
-    analysed.push({ fixture, homeStanding, awayStanding, ...analysis })
+    const h2h = h2hMap.get(fixture.id) ?? undefined
+    const analysis = analyseMatch(fixture, homeStanding, awayStanding, h2h)
+    analysed.push({ fixture, homeStanding, awayStanding, h2h, ...analysis })
   }
 
   const sorted = analysed.sort((a, b) => b.confidence - a.confidence)
