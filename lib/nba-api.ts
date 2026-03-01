@@ -65,17 +65,24 @@ export async function buildNBATeamStats(): Promise<Map<number, NBATeamStats>> {
   const allGames: NBAGame[] = []
   const today = new Date()
 
-  // Fetch last 14 days (sequential to respect rate limits)
-  for (let i = 1; i <= 14; i++) {
+  // Fetch last 7 days in parallel (faster — free tier has no per-minute rate limit)
+  const dates = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(today)
-    d.setDate(d.getDate() - i)
-    const dateStr = d.toISOString().split('T')[0]
-    try {
-      const games = await apiFetch<{ response: NBAGame[] }>(`/games?date=${dateStr}`)
-      const finished = (games.response || []).filter(g => g.status.long === 'Finished')
+    d.setDate(d.getDate() - (i + 1))
+    return d.toISOString().split('T')[0]
+  })
+
+  const results = await Promise.allSettled(
+    dates.map(dateStr =>
+      apiFetch<{ response: NBAGame[] }>(`/games?date=${dateStr}`)
+    )
+  )
+
+  for (const r of results) {
+    if (r.status === 'fulfilled') {
+      const finished = (r.value.response || []).filter(g => g.status.long === 'Finished')
       allGames.push(...finished)
-    } catch { /* skip */ }
-    await delay(200)
+    }
   }
 
   // Aggregate per team

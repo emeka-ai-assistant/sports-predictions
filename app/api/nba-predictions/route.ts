@@ -29,17 +29,23 @@ export async function GET(req: Request) {
 
     // 2. Fetch today's scheduled games
     const games = await getTodayNBAGames()
+    const debug = searchParams.get('debug') === 'true'
+
+    if (debug) {
+      return NextResponse.json({ step: 'games', count: games.length, statuses: games.map(g => ({ home: g.teams.home.name, away: g.teams.visitors.name, status: g.status.long })) })
+    }
+
     if (games.length === 0) {
       return NextResponse.json({ predictions: [], message: 'No NBA games scheduled today.' })
     }
 
-    // 3. Build team stats from last 14 days
+    // 3. Build team stats from last 7 days (parallel fetch)
     const statsMap = await buildNBATeamStats()
 
     // 4. Run prediction engine
     const picks = selectNBAPicks(games, statsMap, 5)
     if (picks.length === 0) {
-      return NextResponse.json({ predictions: [], message: 'No high-confidence NBA picks today.' })
+      return NextResponse.json({ predictions: [], message: 'No high-confidence NBA picks today.', gamesFound: games.length, statsTeams: statsMap.size })
     }
 
     // 5. Save to Supabase
