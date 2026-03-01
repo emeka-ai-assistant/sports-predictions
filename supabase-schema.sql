@@ -19,8 +19,10 @@ CREATE TABLE IF NOT EXISTS predictions (
   reasoning           JSONB NOT NULL DEFAULT '[]',
   odds                DECIMAL(6,2),
   result              TEXT CHECK (result IN ('WIN','LOSS','VOID')),
-  home_score          INTEGER,
-  away_score          INTEGER,
+  home_score          INTEGER,         -- Full-time home goals
+  away_score          INTEGER,         -- Full-time away goals
+  ht_home_score       INTEGER,         -- Half-time home goals (used for 1UP/2UP evaluation)
+  ht_away_score       INTEGER,         -- Half-time away goals
   created_at          TIMESTAMPTZ DEFAULT NOW(),
   updated_at          TIMESTAMPTZ DEFAULT NOW()
 );

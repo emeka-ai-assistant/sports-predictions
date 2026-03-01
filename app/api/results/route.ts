@@ -10,31 +10,45 @@ const BASE_URL = 'https://api.football-data.org/v4'
 const delay = (ms: number) => new Promise(r => setTimeout(r, ms))
 
 /**
- * Evaluate the result of a pick given the full-time score.
+ * Determine which team a pick label refers to (home or away).
+ * e.g. "Crystal Palace +1" → match against homeTeam / awayTeam names.
+ */
+function pickIsForHome(pickLabel: string, homeTeam: string, awayTeam: string): boolean {
+  const label = pickLabel.toLowerCase()
+  const homeWords = homeTeam.toLowerCase().split(' ').filter(w => w.length > 2)
+  const awayWords = awayTeam.toLowerCase().split(' ').filter(w => w.length > 2)
+  const homeHits = homeWords.filter(w => label.includes(w)).length
+  const awayHits = awayWords.filter(w => label.includes(w)).length
+  return homeHits >= awayHits
+}
+
+/**
+ * Evaluate result using full-time AND half-time score.
  *
- * For ONE_UP / TWO_UP: we use the final result as a proxy
- *   (team must have led at some point — if they win, they almost certainly led)
+ * ONE_UP  — "Team leads by 1+ goal at ANY POINT = WIN"
+ *   WIN:  Team wins the match (must have led)
+ *         OR team was leading at half-time (they had a lead, regardless of final result)
+ *   LOSS: 0-0 draw (never scored / led)
+ *         OR team lost without ever leading at HT
+ *   VOID: Ambiguous — drew from equal HT, or scored but can't determine who went first
  *
- * For HANDICAP picks: pickLabel contains the team that gets the handicap,
- *   e.g. "Crystal Palace +1" means Crystal Palace gets +1 goal start.
+ * TWO_UP  — "Team leads by 2+ goals at ANY POINT = WIN"
+ *   WIN:  Final margin ≥ 2 (they were at least 2 up at some point)
+ *         OR HT margin ≥ 2
+ *   LOSS: Drew or lost (never had a 2-goal cushion)
+ *   VOID: Won by exactly 1 but scored 2+ goals (might have been 2-0 at some point)
  */
 function evaluateResult(
   pick: PickType,
   pickLabel: string,
   homeTeam: string,
   awayTeam: string,
-  homeGoals: number,
-  awayGoals: number
+  homeGoals: number,     // FT
+  awayGoals: number,     // FT
+  htHome: number,        // HT
+  htAway: number         // HT
 ): ResultType {
   const total = homeGoals + awayGoals
-
-  // Identify which team the pick is for (used by win/handicap picks)
-  const labelLower = pickLabel.toLowerCase()
-  const homeWords = homeTeam.toLowerCase().split(' ').filter(w => w.length > 2)
-  const awayWords = awayTeam.toLowerCase().split(' ').filter(w => w.length > 2)
-  const homeScore = homeWords.filter(w => labelLower.includes(w)).length
-  const awayScore = awayWords.filter(w => labelLower.includes(w)).length
-  const pickIsForHome = homeScore >= awayScore
 
   switch (pick) {
     case 'HOME_WIN':
@@ -58,43 +72,70 @@ function evaluateResult(
     case 'BTTS':
       return homeGoals >= 1 && awayGoals >= 1 ? 'WIN' : 'LOSS'
 
-    case 'ONE_UP':
-      // Proxy: if picked team wins → they led at some point → WIN
-      if (pickIsForHome) return homeGoals > awayGoals ? 'WIN' : 'LOSS'
-      return awayGoals > homeGoals ? 'WIN' : 'LOSS'
+    case 'ONE_UP': {
+      const forHome = pickIsForHome(pickLabel, homeTeam, awayTeam)
+      const pickFT    = forHome ? homeGoals : awayGoals
+      const oppFT     = forHome ? awayGoals : homeGoals
+      const pickHT    = forHome ? htHome    : htAway
+      const oppHT     = forHome ? htAway    : htHome
+      const ftMargin  = pickFT - oppFT
 
-    case 'TWO_UP':
-      // Proxy: team wins by 2+ → they led by 2+ at some point
-      if (pickIsForHome) return homeGoals - awayGoals >= 2 ? 'WIN' : 'LOSS'
-      return awayGoals - homeGoals >= 2 ? 'WIN' : 'LOSS'
+      // Team won — they MUST have led at some point
+      if (ftMargin > 0) return 'WIN'
 
-    case 'HANDICAP_PLUS_1':
-      // Team gets +1: WIN if win or draw; VOID if lose by exactly 1; LOSS if lose by 2+
-      if (pickIsForHome) {
-        const diff = homeGoals - awayGoals
-        if (diff >= 0) return 'WIN'
-        if (diff === -1) return 'VOID'
-        return 'LOSS'
-      } else {
-        const diff = awayGoals - homeGoals
-        if (diff >= 0) return 'WIN'
-        if (diff === -1) return 'VOID'
-        return 'LOSS'
-      }
+      // Team was leading at half-time — they had a lead, WIN regardless of FT
+      if (pickHT > oppHT) return 'WIN'
 
-    case 'HANDICAP_PLUS_2':
-      // Team gets +2: WIN if lose by <=1; VOID if lose by exactly 2; LOSS if lose by 3+
-      if (pickIsForHome) {
-        const diff = homeGoals - awayGoals
-        if (diff >= -1) return 'WIN'
-        if (diff === -2) return 'VOID'
-        return 'LOSS'
-      } else {
-        const diff = awayGoals - homeGoals
-        if (diff >= -1) return 'WIN'
-        if (diff === -2) return 'VOID'
-        return 'LOSS'
-      }
+      // 0-0 draw or team never scored — never led
+      if (pickFT === 0) return 'LOSS'
+
+      // Team lost and was losing at HT — never led
+      if (ftMargin < 0 && pickHT <= oppHT) return 'LOSS'
+
+      // Ambiguous: drew from equal HT, or scored while behind at HT — can't
+      // determine without goal timings. Mark VOID so it doesn't count as a loss.
+      return 'VOID'
+    }
+
+    case 'TWO_UP': {
+      const forHome  = pickIsForHome(pickLabel, homeTeam, awayTeam)
+      const pickFT   = forHome ? homeGoals : awayGoals
+      const oppFT    = forHome ? awayGoals : homeGoals
+      const pickHT   = forHome ? htHome    : htAway
+      const oppHT    = forHome ? htAway    : htHome
+      const ftMargin = pickFT - oppFT
+      const htMargin = pickHT - oppHT
+
+      // Final margin ≥ 2 — definitely led by 2 at some point
+      if (ftMargin >= 2) return 'WIN'
+
+      // HT margin ≥ 2 — were 2 up at the break
+      if (htMargin >= 2) return 'WIN'
+
+      // Won by exactly 1 but scored 2+ — might have been 2-0 before conceding
+      if (ftMargin === 1 && pickFT >= 2) return 'VOID'
+
+      return 'LOSS'
+    }
+
+    case 'HANDICAP_PLUS_1': {
+      // Identified team gets +1 goal head start
+      // WIN: win or draw  |  VOID: lose by exactly 1  |  LOSS: lose by 2+
+      const forHome = pickIsForHome(pickLabel, homeTeam, awayTeam)
+      const diff = forHome ? homeGoals - awayGoals : awayGoals - homeGoals
+      if (diff >= 0)  return 'WIN'
+      if (diff === -1) return 'VOID'
+      return 'LOSS'
+    }
+
+    case 'HANDICAP_PLUS_2': {
+      // WIN: win, draw, or lose by 1  |  VOID: lose by exactly 2  |  LOSS: lose by 3+
+      const forHome = pickIsForHome(pickLabel, homeTeam, awayTeam)
+      const diff = forHome ? homeGoals - awayGoals : awayGoals - homeGoals
+      if (diff >= -1) return 'WIN'
+      if (diff === -2) return 'VOID'
+      return 'LOSS'
+    }
 
     default:
       return 'VOID'
@@ -104,17 +145,15 @@ function evaluateResult(
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get('authorization')
   const cronSecret = process.env.CRON_SECRET
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-    // Also allow manual trigger from ?key= query param
-    const key = new URL(request.url).searchParams.get('key')
-    if (key !== cronSecret) {
-      return new Response('Unauthorized', { status: 401 })
-    }
+  const key = new URL(request.url).searchParams.get('key')
+
+  if (cronSecret && authHeader !== `Bearer ${cronSecret}` && key !== cronSecret) {
+    return new Response('Unauthorized', { status: 401 })
   }
 
   const today = new Date().toISOString().split('T')[0]
 
-  // 1. Get today's pending predictions
+  // Get pending predictions (no result yet)
   const { data: pending, error } = await supabase
     .from('predictions')
     .select('*')
@@ -136,18 +175,17 @@ export async function GET(request: NextRequest) {
 
   for (const pred of pending) {
     try {
-      // Fetch match status from API
       const res = await fetch(`${BASE_URL}/matches/${pred.match_id}`, {
         headers: { 'X-Auth-Token': API_KEY },
       })
+
       if (!res.ok) {
         skipped.push(`${pred.home_team} vs ${pred.away_team} (API ${res.status})`)
         await delay(400)
         continue
       }
 
-      const data = await res.json()
-      const match = data
+      const match = await res.json()
 
       if (match.status !== 'FINISHED') {
         skipped.push(`${pred.home_team} vs ${pred.away_team} (${match.status})`)
@@ -155,36 +193,49 @@ export async function GET(request: NextRequest) {
         continue
       }
 
-      const homeGoals: number = match.score?.fullTime?.home ?? 0
-      const awayGoals: number = match.score?.fullTime?.away ?? 0
+      const homeGoals: number = match.score?.fullTime?.home  ?? 0
+      const awayGoals: number = match.score?.fullTime?.away  ?? 0
+      const htHome:    number = match.score?.halfTime?.home  ?? 0
+      const htAway:    number = match.score?.halfTime?.away  ?? 0
 
       const result = evaluateResult(
         pred.pick as PickType,
         pred.pick_label,
         pred.home_team,
         pred.away_team,
-        homeGoals,
-        awayGoals
+        homeGoals, awayGoals,
+        htHome,    htAway
       )
 
-      // Update Supabase
-      await supabase
+      // Save to Supabase (try with HT columns first; fall back if columns don't exist yet)
+      const { error: updateErr } = await supabase
         .from('predictions')
         .update({
           result,
-          home_score: homeGoals,
-          away_score: awayGoals,
+          home_score:    homeGoals,
+          away_score:    awayGoals,
+          ht_home_score: htHome,
+          ht_away_score: htAway,
         })
         .eq('id', pred.id)
 
-      updated.push(`${pred.home_team} vs ${pred.away_team}: ${homeGoals}–${awayGoals} → ${result} (${pred.pick_label})`)
-      console.log(`[RESULTS] ✓ ${pred.home_team} vs ${pred.away_team}: ${homeGoals}–${awayGoals} → ${result}`)
+      if (updateErr) {
+        // HT columns may not exist in old schema — retry without them
+        await supabase
+          .from('predictions')
+          .update({ result, home_score: homeGoals, away_score: awayGoals })
+          .eq('id', pred.id)
+      }
+
+      const scoreStr = `FT: ${homeGoals}–${awayGoals}  HT: ${htHome}–${htAway}`
+      updated.push(`${pred.home_team} vs ${pred.away_team}: ${scoreStr} → ${result} (${pred.pick_label})`)
+      console.log(`[RESULTS] ✓ ${pred.home_team} vs ${pred.away_team}: ${scoreStr} → ${result}`)
 
     } catch (e: any) {
       skipped.push(`${pred.home_team} vs ${pred.away_team} (${e.message})`)
     }
 
-    await delay(400) // respect 10 req/min rate limit
+    await delay(400)
   }
 
   return NextResponse.json({

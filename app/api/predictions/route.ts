@@ -140,8 +140,10 @@ function rowToPrediction(row: any): Prediction {
     reasoning: row.reasoning ?? [],
     odds: row.odds ?? undefined,
     result: row.result ?? undefined,
-    homeScore: row.home_score ?? undefined,
-    awayScore: row.away_score ?? undefined,
+    homeScore:   row.home_score    ?? undefined,
+    awayScore:   row.away_score    ?? undefined,
+    htHomeScore: row.ht_home_score ?? undefined,
+    htAwayScore: row.ht_away_score ?? undefined,
     createdAt: row.created_at,
   }
 }

@@ -150,13 +150,25 @@ export default function PredictionCard({ prediction: p, onUpdate, selected, onTo
             )}
             <span className="font-semibold text-white text-sm leading-tight truncate">{p.homeTeam}</span>
           </div>
-          <div className="flex-shrink-0 px-1 text-center">
+
+          {/* Score display */}
+          <div className="flex-shrink-0 px-1 text-center min-w-[60px]">
             {p.homeScore !== undefined && p.awayScore !== undefined ? (
-              <span className="font-bold text-white text-base">{p.homeScore}–{p.awayScore}</span>
+              <div className="flex flex-col items-center gap-0.5">
+                <span className="font-bold text-white text-base leading-tight">
+                  {p.homeScore}–{p.awayScore}
+                </span>
+                {p.htHomeScore !== undefined && p.htAwayScore !== undefined && (
+                  <span className="text-[10px] text-gray-500 leading-tight">
+                    HT {p.htHomeScore}–{p.htAwayScore}
+                  </span>
+                )}
+              </div>
             ) : (
               <span className="text-gray-600 text-xs font-medium">vs</span>
             )}
           </div>
+
           <div className="flex-1 flex items-center justify-end gap-2 min-w-0">
             <span className="font-semibold text-white text-sm leading-tight truncate text-right">{p.awayTeam}</span>
             {p.awayCrest && (
@@ -186,6 +198,13 @@ export default function PredictionCard({ prediction: p, onUpdate, selected, onTo
             </p>
           ))}
         </div>
+
+        {/* VOID explanation for 1UP/2UP */}
+        {p.result === 'VOID' && (p.pick === 'ONE_UP' || p.pick === 'TWO_UP') && (
+          <p className="mt-2 text-[11px] text-gray-500 italic">
+            ⬜ Marked void — goal timings unavailable to confirm lead. Not counted as a loss.
+          </p>
+        )}
       </div>
 
       {/* Result section */}

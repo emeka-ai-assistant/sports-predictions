@@ -29,6 +29,8 @@ function toRow(p: Prediction) {
     result: p.result ?? null,
     home_score: p.homeScore ?? null,
     away_score: p.awayScore ?? null,
+    ht_home_score: p.htHomeScore ?? null,
+    ht_away_score: p.htAwayScore ?? null,
     created_at: p.createdAt,
   }
 }
@@ -52,9 +54,11 @@ function fromRow(row: any): Prediction {
     reasoning: row.reasoning ?? [],
     odds: row.odds ?? undefined,
     result: row.result ?? undefined,
-    homeScore: row.home_score ?? undefined,
-    awayScore: row.away_score ?? undefined,
-    createdAt: row.created_at,
+    homeScore:   row.home_score    ?? undefined,
+    awayScore:   row.away_score    ?? undefined,
+    htHomeScore: row.ht_home_score ?? undefined,
+    htAwayScore: row.ht_away_score ?? undefined,
+    createdAt:   row.created_at,
   }
 }
 

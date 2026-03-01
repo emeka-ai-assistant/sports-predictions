@@ -87,8 +87,10 @@ export interface Prediction {
   reasoning: string[]
   odds?: number
   result?: ResultType
-  homeScore?: number
-  awayScore?: number
+  homeScore?: number       // Full-time home goals
+  awayScore?: number       // Full-time away goals
+  htHomeScore?: number     // Half-time home goals
+  htAwayScore?: number     // Half-time away goals
   createdAt: string
 }
 
