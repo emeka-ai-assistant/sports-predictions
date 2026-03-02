@@ -570,6 +570,27 @@ function analyseMatchMarkets(
     markets.push({ marketType: 'OVER_2_5', pick, predLabel, confidence, reasoning })
   }
 
+  // ── Append both-team stats to EVERY market's reasoning ───────
+  // Prefix with "STATS|" so the UI can style them differently
+  const statsHomeForm = getFormString(home.form)
+  const statsAwayForm = getFormString(away.form)
+  const hAvgFor2  = home.goalsFor  / pg_h
+  const hAvgAgst2 = home.goalsAgainst / pg_h
+  const aAvgFor2  = away.goalsFor  / pg_a
+  const aAvgAgst2 = away.goalsAgainst / pg_a
+
+  const homeStats = `STATS|${fixture.homeTeam.name}|${home.position}th · ${home.points}pts|Form: ${statsHomeForm}|⚽ ${hAvgFor2.toFixed(1)} scored · ${hAvgAgst2.toFixed(1)} conceded per game`
+  const awayStats = `STATS|${fixture.awayTeam.name}|${away.position}th · ${away.points}pts|Form: ${statsAwayForm}|⚽ ${aAvgFor2.toFixed(1)} scored · ${aAvgAgst2.toFixed(1)} conceded per game`
+  const h2hStats  = h2h && h2h.meetings >= 3
+    ? `H2H|Last ${h2h.meetings} meetings|${fixture.homeTeam.name} won ${Math.round(h2h.homeWinRate * h2h.meetings)} · Draws ${Math.round(h2h.drawRate * h2h.meetings)} · ${fixture.awayTeam.name} won ${Math.round(h2h.awayWinRate * h2h.meetings)}|Avg goals: ${h2h.avgGoals.toFixed(1)}/game`
+    : null
+
+  for (const market of markets) {
+    market.reasoning.push(homeStats)
+    market.reasoning.push(awayStats)
+    if (h2hStats) market.reasoning.push(h2hStats)
+  }
+
   return markets
 }
 
