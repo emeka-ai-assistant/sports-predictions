@@ -1,4 +1,5 @@
 'use client'
+import { useState } from 'react'
 import Image from 'next/image'
 import { Prediction, PickType, MarketType, ResultType } from '@/lib/types'
 
@@ -8,10 +9,22 @@ interface Props {
 
 const MARKET_ORDER: MarketType[] = ['1X2', 'GG', 'OVER_1_5', 'OVER_2_5']
 const MARKET_NAMES: Record<MarketType, string> = {
-  '1X2': '1X2',
-  'GG': 'GG',
+  '1X2':      '1X2',
+  'GG':       'GG',
   'OVER_1_5': 'Over 1.5',
   'OVER_2_5': 'Over 2.5',
+}
+
+const PICK_STYLES: Record<string, { bg: string; icon: string }> = {
+  HOME_WIN:       { bg: 'bg-blue-500/20 text-blue-300 border-blue-500/40',      icon: '🏠' },
+  AWAY_WIN:       { bg: 'bg-purple-500/20 text-purple-300 border-purple-500/40', icon: '✈️' },
+  DRAW:           { bg: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40', icon: '🤝' },
+  OVER_1_5:       { bg: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40',       icon: '⚡' },
+  OVER_2_5:       { bg: 'bg-orange-500/20 text-orange-300 border-orange-500/40', icon: '🔥' },
+  UNDER_1_5:      { bg: 'bg-slate-500/20 text-slate-300 border-slate-500/40',    icon: '🛡️' },
+  UNDER_2_5:      { bg: 'bg-slate-500/20 text-slate-300 border-slate-500/40',    icon: '🛡️' },
+  BTTS:           { bg: 'bg-pink-500/20 text-pink-300 border-pink-500/40',       icon: '⚽' },
+  NO_BTTS:        { bg: 'bg-gray-500/20 text-gray-300 border-gray-500/40',       icon: '🚫' },
 }
 
 function getMarketType(id: string): MarketType | null {
@@ -20,45 +33,108 @@ function getMarketType(id: string): MarketType | null {
   return MARKET_ORDER.includes(mt) ? mt : null
 }
 
-function formatDate(dateStr: string): string {
-  const date = new Date(dateStr)
-  return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
-}
-
-function getActualResult(pick: PickType, homeScore: number, awayScore: number): string {
+function getActualLabel(pick: PickType, homeScore: number, awayScore: number): string {
   const total = homeScore + awayScore
   switch (pick) {
-    case 'HOME_WIN': return homeScore > awayScore ? 'Home Win' : homeScore === awayScore ? 'Draw' : 'Away Win'
-    case 'AWAY_WIN': return awayScore > homeScore ? 'Away Win' : homeScore === awayScore ? 'Draw' : 'Home Win'
-    case 'DRAW': return homeScore === awayScore ? 'Draw' : homeScore > awayScore ? 'Home Win' : 'Away Win'
-    case 'BTTS': return homeScore >= 1 && awayScore >= 1 ? 'Yes' : 'No'
-    case 'NO_BTTS': return !(homeScore >= 1 && awayScore >= 1) ? 'No' : 'Yes'
-    case 'OVER_1_5': return total >= 2 ? 'Yes' : 'No'
-    case 'UNDER_1_5': return total < 2 ? 'No' : 'Yes'
-    case 'OVER_2_5': return total >= 3 ? 'Over' : 'Under'
-    case 'UNDER_2_5': return total < 3 ? 'Under' : 'Over'
-    default: return '—'
+    case 'HOME_WIN':  return homeScore > awayScore ? 'Home Win' : homeScore === awayScore ? 'Draw' : 'Away Win'
+    case 'AWAY_WIN':  return awayScore > homeScore ? 'Away Win' : homeScore === awayScore ? 'Draw' : 'Home Win'
+    case 'DRAW':      return homeScore === awayScore ? 'Draw' : homeScore > awayScore ? 'Home Win' : 'Away Win'
+    case 'BTTS':      return homeScore >= 1 && awayScore >= 1 ? 'Yes' : 'No'
+    case 'NO_BTTS':   return !(homeScore >= 1 && awayScore >= 1) ? 'No' : 'Yes'
+    case 'OVER_1_5':  return total >= 2 ? 'Yes' : 'No'
+    case 'UNDER_1_5': return total < 2  ? 'No'  : 'Yes'
+    case 'OVER_2_5':  return total >= 3 ? 'Over' : 'Under'
+    case 'UNDER_2_5': return total < 3  ? 'Under': 'Over'
+    default:          return '—'
   }
 }
 
-function ResultCircle({ result }: { result?: ResultType }) {
-  if (result === 'WIN') return (
-    <div className="w-6 h-6 rounded-full bg-green-500 flex items-center justify-center">
-      <span className="text-white text-xs font-bold">✓</span>
-    </div>
-  )
-  if (result === 'LOSS') return (
-    <div className="w-6 h-6 rounded-full bg-red-500 flex items-center justify-center">
-      <span className="text-white text-xs font-bold">✕</span>
-    </div>
-  )
-  if (result === 'VOID') return (
-    <div className="w-6 h-6 rounded-full bg-gray-500 flex items-center justify-center">
-      <span className="text-white text-xs font-bold">○</span>
-    </div>
-  )
+function ConfidenceBar({ value }: { value: number }) {
+  const color = value >= 78 ? 'bg-green-400' : value >= 65 ? 'bg-yellow-400' : 'bg-orange-400'
   return (
-    <div className="w-6 h-6 rounded-full border-2 border-gray-600" />
+    <div className="flex items-center gap-2">
+      <div className="flex-1 h-1 bg-white/10 rounded-full overflow-hidden">
+        <div className={`h-full rounded-full ${color}`} style={{ width: `${value}%` }} />
+      </div>
+      <span className="text-[11px] font-bold text-white/50 w-7 text-right">{value}%</span>
+    </div>
+  )
+}
+
+function MarketRow({ pred, hasScore, homeScore, awayScore }: {
+  pred: Prediction
+  hasScore: boolean
+  homeScore?: number
+  awayScore?: number
+}) {
+  const [open, setOpen] = useState(false)
+  const mt = getMarketType(pred.id)
+  const marketName = mt ? MARKET_NAMES[mt] : '—'
+  const style = PICK_STYLES[pred.pick] ?? PICK_STYLES.HOME_WIN
+  const result = pred.result
+  const actual = hasScore ? getActualLabel(pred.pick, homeScore!, awayScore!) : null
+
+  const resultIcon =
+    result === 'WIN'  ? <span className="text-green-400 text-base">✅</span> :
+    result === 'LOSS' ? <span className="text-red-400 text-base">❌</span> :
+    result === 'VOID' ? <span className="text-gray-400 text-base">⬜</span> :
+    <span className="w-5 h-5 rounded-full border-2 border-gray-600 inline-block" />
+
+  const rowBg =
+    result === 'WIN'  ? 'bg-green-500/10 border-green-500/20' :
+    result === 'LOSS' ? 'bg-red-500/10 border-red-500/20' :
+    'bg-white/[0.03] border-transparent'
+
+  return (
+    <div className={`rounded-lg border overflow-hidden ${rowBg}`}>
+      {/* Main row */}
+      <div className="px-3 py-2.5">
+        <div className="flex items-center gap-2">
+          {/* Market label */}
+          <span className="text-xs text-gray-500 font-medium w-14 flex-shrink-0">{marketName}</span>
+
+          {/* Pick badge */}
+          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold border flex-1 min-w-0 ${style.bg}`}>
+            {style.icon} <span className="truncate">{pred.pickLabel}</span>
+          </span>
+
+          {/* Actual result */}
+          {result && actual ? (
+            <span className="text-[11px] text-gray-500 flex-shrink-0">
+              Act: <span className="text-gray-300">{actual}</span>
+            </span>
+          ) : null}
+
+          {/* Result icon */}
+          <span className="flex-shrink-0">{resultIcon}</span>
+
+          {/* Accordion toggle */}
+          <button
+            onClick={() => setOpen(v => !v)}
+            className="flex-shrink-0 w-5 h-5 flex items-center justify-center text-gray-600 hover:text-gray-300 transition-colors"
+          >
+            <span className={`text-xs transition-transform duration-200 ${open ? 'rotate-180' : ''}`}>▾</span>
+          </button>
+        </div>
+
+        {/* Confidence bar */}
+        <div className="mt-1.5 pl-[3.75rem]">
+          <ConfidenceBar value={pred.confidence} />
+        </div>
+      </div>
+
+      {/* Accordion — reasoning */}
+      {open && (
+        <div className="px-3 pb-3 border-t border-white/5 pt-2 space-y-1">
+          {pred.reasoning.map((r, i) => (
+            <p key={i} className="text-xs text-gray-400 flex items-start gap-1.5">
+              <span className="text-green-400 mt-0.5 flex-shrink-0">▸</span>
+              {r}
+            </p>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -67,125 +143,84 @@ export default function MatchCard({ predictions }: Props) {
 
   const base = predictions[0]
   const hasScore = base.homeScore !== undefined && base.awayScore !== undefined
+
   const sorted = [...predictions].sort((a, b) => {
     const ma = getMarketType(a.id)
     const mb = getMarketType(b.id)
     return (ma ? MARKET_ORDER.indexOf(ma) : 99) - (mb ? MARKET_ORDER.indexOf(mb) : 99)
   })
 
-  // Overall match status
+  // Overall WON/LOST badge
   const results = predictions.map(p => p.result).filter(Boolean) as ResultType[]
-  const allWon = results.length > 0 && results.every(r => r === 'WIN' || r === 'VOID')
+  const allWon = results.length > 0 && results.every(r => r === 'WIN' || r === 'VOID') && results.some(r => r === 'WIN')
   const anyLost = results.some(r => r === 'LOSS')
 
   return (
     <div className="bg-[#0f1923] border border-[#1e3a5f] rounded-xl overflow-hidden">
-      {/* Header - Date & Competition */}
-      <div className="px-4 py-2 bg-[#0a1628] border-b border-[#1e3a5f] flex items-center justify-between">
-        <div className="flex items-center gap-2">
+
+      {/* ── Header ─────────────────────────────────────────────── */}
+      <div className="flex items-center justify-between px-4 py-2.5 bg-[#0a1628] border-b border-[#1e3a5f]">
+        <div className="flex items-center gap-2 min-w-0">
           {base.competitionEmblem && (
-            <Image src={base.competitionEmblem} alt="" width={16} height={16} className="rounded-sm opacity-80" />
+            <Image src={base.competitionEmblem} alt="" width={14} height={14} className="rounded-sm opacity-80 flex-shrink-0" />
           )}
-          <span className="text-xs text-gray-400">{base.competition}</span>
+          <span className="text-xs text-gray-400 font-medium truncate">{base.competition}</span>
+          <span className="text-gray-700">·</span>
+          <span className="text-xs text-gray-600">🕐 {base.kickoff}</span>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-gray-500">{formatDate(base.matchDate)}</span>
-          <span className="text-xs text-gray-600">·</span>
-          <span className="text-xs text-gray-500">{base.kickoff}</span>
-        </div>
+        {allWon && (
+          <span className="px-2.5 py-0.5 rounded text-xs font-bold bg-green-500 text-black flex-shrink-0">✓ WON</span>
+        )}
+        {anyLost && (
+          <span className="px-2.5 py-0.5 rounded text-xs font-bold bg-red-500/20 border border-red-500 text-red-400 flex-shrink-0">✗ LOSS</span>
+        )}
       </div>
 
-      {/* Match Row - Teams with Score */}
-      <div className="px-4 py-4">
-        <div className="flex items-center justify-between gap-4">
-          {/* Home Team */}
-          <div className="flex-1 flex items-center gap-3">
+      {/* ── Teams + Score ───────────────────────────────────────── */}
+      <div className="px-4 pt-3 pb-3">
+        <div className="flex items-center gap-3">
+          <div className="flex-1 flex items-center gap-2 min-w-0">
             {base.homeCrest && (
-              <Image src={base.homeCrest} alt="" width={32} height={32} className="object-contain" />
+              <Image src={base.homeCrest} alt="" width={28} height={28} className="object-contain flex-shrink-0" />
             )}
-            <span className="font-semibold text-white text-base truncate">{base.homeTeam}</span>
+            <span className="font-semibold text-white text-sm truncate">{base.homeTeam}</span>
           </div>
 
-          {/* Score or VS */}
-          <div className="flex-shrink-0">
+          <div className="flex-shrink-0 text-center min-w-[60px]">
             {hasScore ? (
-              <div className="text-center">
-                <span className="text-2xl font-bold text-white">
-                  {base.homeScore} – {base.awayScore}
-                </span>
+              <div className="flex flex-col items-center">
+                <span className="font-bold text-white text-xl leading-tight">{base.homeScore}–{base.awayScore}</span>
+                {base.htHomeScore !== undefined && (
+                  <span className="text-[10px] text-gray-500">HT {base.htHomeScore}–{base.htAwayScore}</span>
+                )}
               </div>
             ) : (
-              <span className="text-gray-600 font-medium">VS</span>
+              <span className="text-gray-600 text-sm">vs</span>
             )}
           </div>
 
-          {/* Away Team */}
-          <div className="flex-1 flex items-center justify-end gap-3">
-            <span className="font-semibold text-white text-base truncate text-right">{base.awayTeam}</span>
+          <div className="flex-1 flex items-center justify-end gap-2 min-w-0">
+            <span className="font-semibold text-white text-sm truncate text-right">{base.awayTeam}</span>
             {base.awayCrest && (
-              <Image src={base.awayCrest} alt="" width={32} height={32} className="object-contain" />
+              <Image src={base.awayCrest} alt="" width={28} height={28} className="object-contain flex-shrink-0" />
             )}
           </div>
         </div>
       </div>
 
-      {/* Predictions Section */}
-      <div className="px-4 pb-4">
-        <div className="text-xs font-semibold text-gray-500 uppercase mb-3 tracking-wider">
-          Prediction
-        </div>
-
-        <div className="space-y-2">
-          {sorted.map(pred => {
-            const mt = getMarketType(pred.id)
-            const marketName = mt ? MARKET_NAMES[mt] : pred.pick
-            const result = pred.result
-            const hasResult = !!result
-            
-            let actual = null
-            if (hasScore) {
-              actual = getActualResult(pred.pick, base.homeScore!, base.awayScore!)
-            }
-
-            return (
-              <div key={pred.id} className="flex items-center justify-between py-2 border-b border-[#1e3a5f]/50 last:border-0">
-                {/* Market name */}
-                <span className="text-sm text-gray-400 w-20 flex-shrink-0">{marketName}</span>
-
-                {/* Prediction value */}
-                <div className="flex-1 px-4">
-                  <span className={`text-sm font-medium ${
-                    hasResult && result === 'WIN' ? 'text-green-400' :
-                    hasResult && result === 'LOSS' ? 'text-red-400' : 'text-white'
-                  }`}>
-                    {pred.pickLabel}
-                  </span>
-                </div>
-
-                {/* Actual vs Result */}
-                <div className="flex items-center gap-3">
-                  {hasResult && actual && (
-                    <span className="text-sm text-gray-500">
-                      <span className="text-gray-600">Act:</span> <span className="text-gray-300">{actual}</span>
-                    </span>
-                  )}
-                  <ResultCircle result={result} />
-                </div>
-              </div>
-            )
-          })}
-        </div>
+      {/* ── Market rows with accordion ──────────────────────────── */}
+      <div className="px-4 pb-4 space-y-2">
+        <p className="text-[10px] font-semibold text-gray-600 uppercase tracking-widest mb-1">Predictions</p>
+        {sorted.map(pred => (
+          <MarketRow
+            key={pred.id}
+            pred={pred}
+            hasScore={hasScore}
+            homeScore={base.homeScore}
+            awayScore={base.awayScore}
+          />
+        ))}
       </div>
-
-      {/* Overall Status Badge */}
-      {(allWon || anyLost) && (
-        <div className={`px-4 py-2 text-center text-sm font-bold ${
-          allWon ? 'bg-green-500/20 text-green-400 border-t border-green-500/30' : 
-          'bg-red-500/20 text-red-400 border-t border-red-500/30'
-        }`}>
-          {allWon ? '✓ ALL PREDICTIONS WON' : '✗ PREDICTIONS FAILED'}
-        </div>
-      )}
     </div>
   )
 }
