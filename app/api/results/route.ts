@@ -75,6 +75,15 @@ function evaluateResult(
     case 'BTTS':
       return homeGoals >= 1 && awayGoals >= 1 ? 'WIN' : 'LOSS'
 
+    case 'NO_BTTS':
+      return !(homeGoals >= 1 && awayGoals >= 1) ? 'WIN' : 'LOSS'
+
+    case 'UNDER_1_5':
+      return total < 2 ? 'WIN' : 'LOSS'
+
+    case 'UNDER_2_5':
+      return total < 3 ? 'WIN' : 'LOSS'
+
     case 'ONE_UP': {
       const forHome = pickIsForHome(pickLabel, homeTeam, awayTeam)
       const pickFT  = forHome ? homeGoals : awayGoals

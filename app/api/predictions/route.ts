@@ -1,10 +1,9 @@
 import { NextResponse } from 'next/server'
 import { getTodayFixtures, getMultipleStandings, getH2H } from '@/lib/football-api'
-import { selectTopPicks } from '@/lib/predictor'
+import { selectTopMatches } from '@/lib/predictor'
 import { Prediction } from '@/lib/types'
 import { format } from 'date-fns'
 import { supabase } from '@/lib/supabase'
-// import { enrichWithOdds } from '@/lib/odds-api'  // disabled until Sportybet integration
 
 export const dynamic = 'force-dynamic'
 
@@ -20,18 +19,17 @@ export async function GET(req: Request) {
         .from('predictions')
         .select('*')
         .eq('match_date', today)
-        .order('confidence', { ascending: false })
+        .order('match_id', { ascending: true })
 
       if (!dbError && existing && existing.length > 0) {
         const predictions: Prediction[] = existing.map(rowToPrediction)
         return NextResponse.json({ predictions, source: 'database' })
       }
     } else {
-      // Clear today's cache so we re-run the engine fresh
       await supabase.from('predictions').delete().eq('match_date', today)
     }
 
-    // 2. Fetch today's fixtures + recent results for form computation
+    // 2. Fetch today's fixtures + computed form
     const { fixtures, formMap } = await getTodayFixtures()
 
     if (fixtures.length === 0) {
@@ -41,11 +39,11 @@ export async function GET(req: Request) {
       })
     }
 
-    // 3. Fetch standings from Supabase cache (fast, no rate limit)
+    // 3. Fetch standings
     const codes = [...new Set(fixtures.map(f => f.competition.code))]
     const standingsMap = await getMultipleStandings(codes)
 
-    // 4. Fetch H2H data for each fixture (sequential, 350ms delay)
+    // 4. Fetch H2H for each fixture
     const h2hMap = new Map<number, any>()
     for (const fixture of fixtures) {
       const h2h = await getH2H(fixture.id, fixture.homeTeam.id, fixture.awayTeam.id)
@@ -53,41 +51,47 @@ export async function GET(req: Request) {
       await new Promise(r => setTimeout(r, 350))
     }
 
-    // 5. Run prediction engine with standings + H2H + computed form
-    const picks = selectTopPicks(fixtures, standingsMap, h2hMap, 5, formMap)
+    // 5. Run multi-market engine — top 6 matches × 4 markets each
+    const matchCards = selectTopMatches(fixtures, standingsMap, h2hMap, 6, formMap)
 
-    if (picks.length === 0) {
+    if (matchCards.length === 0) {
       return NextResponse.json({
         predictions: [],
-        message: `Fixtures found but none cleared the minimum confidence threshold today. Check back tomorrow or add picks manually.`,
+        message: 'No fixtures with enough data found today.',
       })
     }
 
-    // 5. Map to Prediction objects
-    const rawPredictions = picks.map(p => {
-      const date = new Date(p.fixture.utcDate)
-      return {
-        id: `${p.fixture.id}-${format(date, 'yyyy-MM-dd')}`,
-        matchId: p.fixture.id,
-        homeTeam: p.fixture.homeTeam.name,
-        awayTeam: p.fixture.awayTeam.name,
-        homeCrest: p.fixture.homeTeam.crest || '',
-        awayCrest: p.fixture.awayTeam.crest || '',
-        competition: p.fixture.competition.name,
-        competitionCode: p.fixture.competition.code,
-        competitionEmblem: p.fixture.competition.emblem || '',
-        matchDate: format(date, 'yyyy-MM-dd'),
-        kickoff: format(date, 'HH:mm'),
-        pick: p.pick,
-        pickLabel: p.pickLabel,
-        confidence: p.confidence,
-        reasoning: p.reasoning,
-        createdAt: new Date().toISOString(),
-      }
-    })
+    // 6. Flatten all markets into Prediction rows
+    const now = new Date().toISOString()
+    const predictions: Prediction[] = []
 
-    // Odds disabled until Sportybet integration is available
-    const predictions: Prediction[] = rawPredictions
+    for (const card of matchCards) {
+      const date = new Date(card.fixture.utcDate)
+      const matchDate = format(date, 'yyyy-MM-dd')
+      const kickoff = format(date, 'HH:mm')
+
+      for (const market of card.markets) {
+        const id = `${card.fixture.id}-${matchDate}-${market.marketType}`
+        predictions.push({
+          id,
+          matchId: card.fixture.id,
+          homeTeam: card.fixture.homeTeam.name,
+          awayTeam: card.fixture.awayTeam.name,
+          homeCrest: card.fixture.homeTeam.crest || '',
+          awayCrest: card.fixture.awayTeam.crest || '',
+          competition: card.fixture.competition.name,
+          competitionCode: card.fixture.competition.code,
+          competitionEmblem: card.fixture.competition.emblem || '',
+          matchDate,
+          kickoff,
+          pick: market.pick,
+          pickLabel: market.predLabel,
+          confidence: market.confidence,
+          reasoning: market.reasoning,
+          createdAt: now,
+        })
+      }
+    }
 
     // 7. Save to Supabase
     const rows = predictions.map(pred => ({

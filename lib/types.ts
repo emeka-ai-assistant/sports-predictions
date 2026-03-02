@@ -5,11 +5,17 @@ export type PickType =
   | 'OVER_0_5'          // At least 1 goal in the match
   | 'OVER_1_5'
   | 'OVER_2_5'
-  | 'BTTS'
-  | 'ONE_UP'           // Team leads by 1+ goal at ANY point = WIN
-  | 'TWO_UP'           // Team leads by 2+ goals at ANY point = WIN
-  | 'HANDICAP_PLUS_1'  // Team gets +1 goal start. WIN if they win or draw. LOSE if they lose by 2+
-  | 'HANDICAP_PLUS_2'  // Team gets +2 goal start. WIN if they win, draw or lose by 1. LOSE if they lose by 3+
+  | 'UNDER_1_5'         // Fewer than 2 goals
+  | 'UNDER_2_5'         // Fewer than 3 goals
+  | 'BTTS'              // Both teams score — Yes
+  | 'NO_BTTS'           // Both teams score — No
+  | 'ONE_UP'            // Team leads by 1+ goal at ANY point = WIN
+  | 'TWO_UP'            // Team leads by 2+ goals at ANY point = WIN
+  | 'HANDICAP_PLUS_1'   // Team gets +1 goal start. WIN if they win or draw. LOSE if they lose by 2+
+  | 'HANDICAP_PLUS_2'   // Team gets +2 goal start. WIN if they win, draw or lose by 1. LOSE if they lose by 3+
+
+// Market types for per-match breakdown display
+export type MarketType = '1X2' | 'GG' | 'OVER_1_5' | 'OVER_2_5'
 
 export type ResultType = 'WIN' | 'LOSS' | 'VOID'
 
@@ -92,6 +98,17 @@ export interface Prediction {
   htHomeScore?: number     // Half-time home goals
   htAwayScore?: number     // Half-time away goals
   createdAt: string
+}
+
+// A single market prediction within a match card
+export interface MatchMarket {
+  marketType: MarketType
+  pick: PickType        // the predicted pick type (e.g. HOME_WIN, BTTS, OVER_1_5)
+  predLabel: string     // human label for the prediction (e.g. "Arsenal FC", "Yes", "Over")
+  confidence: number
+  reasoning: string[]
+  result?: ResultType
+  actualLabel?: string  // what actually happened (e.g. "Home Win", "No", "Under")
 }
 
 export interface HistoryStats {

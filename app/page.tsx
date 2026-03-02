@@ -1,21 +1,28 @@
 'use client'
 import { useEffect, useState, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
-import PredictionCard from '@/components/PredictionCard'
+import MatchCard from '@/components/MatchCard'
 import StatsBar from '@/components/StatsBar'
 import { Prediction } from '@/lib/types'
-import { getTodayPredictions, upsertPredictions, getStats, getLastAccumulatorAmount, clearLocalPredictions } from '@/lib/storage'
+import { getTodayPredictions, upsertPredictions, getStats, clearLocalPredictions } from '@/lib/storage'
+
+// Group predictions by matchId (fixture ID) for MatchCard display
+function groupByMatch(predictions: Prediction[]): Map<number, Prediction[]> {
+  const groups = new Map<number, Prediction[]>()
+  for (const pred of predictions) {
+    const list = groups.get(pred.matchId) ?? []
+    list.push(pred)
+    groups.set(pred.matchId, list)
+  }
+  return groups
+}
 
 export default function HomePage() {
-  const router = useRouter()
   const [predictions, setPredictions] = useState<Prediction[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [stats, setStats] = useState({ total: 0, wins: 0, losses: 0, voids: 0, pending: 0, winRate: 0, roi: 0 })
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
-  const [nextAmount, setNextAmount] = useState<number>(500)
 
   const loadFromStorage = useCallback(async () => {
     const stored = await getTodayPredictions()
@@ -24,7 +31,6 @@ export default function HomePage() {
   }, [])
 
   const fetchPredictions = useCallback(async (force = false) => {
-    // On force refresh — clear localStorage so stale browser cache doesn't persist
     if (force) clearLocalPredictions()
 
     const stored = await getTodayPredictions()
@@ -38,11 +44,9 @@ export default function HomePage() {
     setRefreshing(true)
     setError(null)
     setMessage(null)
-
     try {
       const res = await fetch(force ? '/api/predictions?force=true' : '/api/predictions')
       const data = await res.json()
-
       if (data.error) {
         setError(data.error)
       } else if (!data.predictions || data.predictions.length === 0) {
@@ -64,41 +68,14 @@ export default function HomePage() {
 
   useEffect(() => {
     fetchPredictions()
-    getLastAccumulatorAmount().then(amt => setNextAmount(amt))
   }, [fetchPredictions])
 
-  const toggleSelect = (id: string) => {
-    setSelectedIds(prev => {
-      const next = new Set(prev)
-      next.has(id) ? next.delete(id) : next.add(id)
-      return next
-    })
-  }
-
-  const selectAll = () => setSelectedIds(new Set(predictions.map(p => p.id)))
-  const clearAll = () => setSelectedIds(new Set())
-
-  const selectedPicks = predictions.filter(p => selectedIds.has(p.id))
-
-  const today = new Date().toLocaleDateString('en-GB', {
-    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
-  })
-
-  const handleSaveToAccumulator = () => {
-    if (selectedIds.size === 0) return
-    const summary = selectedPicks.map(p =>
-      `${p.homeTeam} vs ${p.awayTeam} — ${p.pickLabel}`
-    )
-    const params = new URLSearchParams({
-      amount: String(nextAmount),
-      picks: String(selectedIds.size),
-      summary: JSON.stringify(summary),
-    })
-    router.push(`/accumulator?${params.toString()}`)
-  }
+  const today = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+  const matchGroups = groupByMatch(predictions)
 
   return (
     <div>
+      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-white">Today's Picks ⚽</h1>
@@ -116,6 +93,7 @@ export default function HomePage() {
 
       <StatsBar stats={stats} />
 
+      {/* States */}
       {loading && (
         <div className="flex flex-col items-center justify-center py-20 gap-4">
           <div className="w-10 h-10 border-4 border-green-400/30 border-t-green-400 rounded-full animate-spin" />
@@ -127,8 +105,7 @@ export default function HomePage() {
         <div className="text-center py-16">
           <div className="text-4xl mb-3">⚠️</div>
           <p className="text-red-400 font-medium mb-4">{error}</p>
-          <button onClick={() => fetchPredictions(true)}
-            className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg text-sm">
+          <button onClick={() => fetchPredictions(true)} className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg text-sm">
             Try Again
           </button>
         </div>
@@ -144,72 +121,28 @@ export default function HomePage() {
         </div>
       )}
 
+      {/* Match Cards Grid */}
       {!loading && predictions.length > 0 && (
         <>
-          {/* Pick list header + select controls */}
           <div className="flex items-center justify-between gap-2 mb-4">
             <div className="flex items-center gap-3">
-              <span className="text-xs text-gray-600">{predictions.length} pick{predictions.length !== 1 ? 's' : ''} today</span>
-              {selectedIds.size > 0 && (
-                <span className="text-xs text-green-400 font-medium">{selectedIds.size} selected</span>
-              )}
-            </div>
-            <div className="flex gap-2">
-              <button onClick={selectAll} className="text-xs text-gray-500 hover:text-white transition-colors px-2 py-1 rounded bg-white/5 hover:bg-white/10">
-                Select All
-              </button>
-              {selectedIds.size > 0 && (
-                <button onClick={clearAll} className="text-xs text-gray-500 hover:text-white transition-colors px-2 py-1 rounded bg-white/5 hover:bg-white/10">
-                  Clear
-                </button>
-              )}
+              <span className="text-xs text-gray-600">
+                {matchGroups.size} match{matchGroups.size !== 1 ? 'es' : ''}
+              </span>
+              <span className="text-xs text-gray-600">·</span>
+              <span className="text-xs text-gray-600">{predictions.length} predictions</span>
             </div>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            {predictions.map(p => (
-              <PredictionCard
-                key={p.id}
-                prediction={p}
-                onUpdate={loadFromStorage}
-                selected={selectedIds.has(p.id)}
-                onToggleSelect={toggleSelect}
-              />
+            {[...matchGroups.entries()].map(([matchId, matchPreds]) => (
+              <MatchCard key={matchId} predictions={matchPreds} />
             ))}
           </div>
-
-          {/* Accumulator Bar */}
-          {selectedIds.size > 0 && (
-            <div className="mt-6 bg-[#0f1923] border border-green-500/30 rounded-xl p-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div className="flex flex-col gap-1">
-                  <div className="text-xs text-gray-500 font-medium uppercase tracking-wide">
-                    {selectedIds.size} pick{selectedIds.size !== 1 ? 's' : ''} selected
-                  </div>
-                  <div className="flex flex-wrap gap-1.5 mt-1">
-                    {selectedPicks.map(p => (
-                      <span key={p.id} className="text-xs bg-white/5 rounded-lg px-2 py-1 text-gray-400">
-                        {p.homeTeam} <span className="text-white/40">vs</span> {p.awayTeam}
-                        <span className="text-green-400 ml-1">· {p.pickLabel}</span>
-                      </span>
-                    ))}
-                  </div>
-                </div>
-                <button
-                  onClick={handleSaveToAccumulator}
-                  className="flex items-center gap-2 px-4 py-2.5 bg-green-500 hover:bg-green-400 text-black font-bold rounded-xl text-sm transition-colors whitespace-nowrap"
-                >
-                  💰 Save to Accumulator
-                </button>
-              </div>
-            </div>
-          )}
         </>
       )}
 
-      <p className="text-center text-xs text-gray-700 mt-10">
-        ⚠️ For entertainment only. Bet responsibly.
-      </p>
+      <p className="text-center text-xs text-gray-700 mt-10">⚠️ For entertainment only. Bet responsibly.</p>
     </div>
   )
 }

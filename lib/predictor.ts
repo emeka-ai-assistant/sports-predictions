@@ -1,4 +1,4 @@
-import { Fixture, TeamStanding, AnalysedFixture, PickType, H2HStats } from './types'
+import { Fixture, TeamStanding, AnalysedFixture, PickType, H2HStats, MatchMarket, MarketType } from './types'
 
 function parseForm(form: string | null): number {
   if (!form) return 0
@@ -326,4 +326,290 @@ export function selectTopPicks(
   }
 
   return sorted.filter(p => p.confidence >= 60).slice(0, count)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MULTI-MARKET ENGINE — generates all 4 markets for a single match
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface MatchCardData {
+  fixture: Fixture
+  homeStanding?: TeamStanding
+  awayStanding?: TeamStanding
+  h2h?: H2HStats
+  markets: MatchMarket[]
+  overallScore: number   // used for ranking/sorting
+}
+
+function analyseMatchMarkets(
+  fixture: Fixture,
+  home: TeamStanding,
+  away: TeamStanding,
+  h2h?: H2HStats | null
+): MatchMarket[] {
+  const markets: MatchMarket[] = []
+  const homeName = fixture.homeTeam.name
+  const awayName = fixture.awayTeam.name
+
+  const pg_h = home.playedGames || 1
+  const pg_a = away.playedGames || 1
+
+  // ── Base signals (same logic as analyseMatch) ─────────────────
+  let homeSignal = 5
+  let awaySignal = 0
+
+  const posDiff = away.position - home.position
+  const ptsDiff = home.points - away.points
+  const homeForm = parseForm(home.form)
+  const awayForm = parseForm(away.form)
+  const homeFormStr = getFormString(home.form)
+  const awayFormStr = getFormString(away.form)
+
+  if (posDiff >= 14) homeSignal += 22
+  else if (posDiff >= 8) homeSignal += 14
+  else if (posDiff >= 4) homeSignal += 7
+  else if (posDiff <= -14) awaySignal += 22
+  else if (posDiff <= -8) awaySignal += 14
+  else if (posDiff <= -4) awaySignal += 7
+
+  if (ptsDiff >= 22) homeSignal += 18
+  else if (ptsDiff >= 12) homeSignal += 10
+  else if (ptsDiff >= 5) homeSignal += 5
+  else if (ptsDiff <= -22) awaySignal += 18
+  else if (ptsDiff <= -12) awaySignal += 10
+  else if (ptsDiff <= -5) awaySignal += 5
+
+  if (homeForm >= 13) homeSignal += 14
+  else if (homeForm >= 10) homeSignal += 9
+  else if (homeForm >= 7) homeSignal += 4
+  else if (homeForm <= 2) homeSignal -= 6
+  else if (homeForm <= 4) homeSignal -= 3
+
+  if (awayForm >= 13) awaySignal += 14
+  else if (awayForm >= 10) awaySignal += 9
+  else if (awayForm >= 7) awaySignal += 4
+  else if (awayForm <= 2) awaySignal -= 6
+  else if (awayForm <= 4) awaySignal -= 3
+
+  const homeWinRateSeason = home.won / pg_h
+  const awayWinRateSeason = away.won / pg_a
+  if (homeWinRateSeason >= 0.65) homeSignal += 8
+  if (awayWinRateSeason >= 0.65) awaySignal += 8
+
+  if (h2h && h2h.meetings >= 3) {
+    if (h2h.homeWinRate >= 0.65) homeSignal += 12
+    else if (h2h.homeWinRate >= 0.5) homeSignal += 6
+    else if (h2h.awayWinRate >= 0.65) awaySignal += 12
+    else if (h2h.awayWinRate >= 0.5) awaySignal += 6
+  }
+
+  const diff = homeSignal - awaySignal
+
+  // ── Expected goals ─────────────────────────────────────────────
+  const hAvgFor  = home.goalsFor  / pg_h
+  const aAvgFor  = away.goalsFor  / pg_a
+  const hAvgAgst = home.goalsAgainst / pg_h
+  const aAvgAgst = away.goalsAgainst / pg_a
+  const xH = (hAvgFor + aAvgAgst) / 2
+  const xA = (aAvgFor + hAvgAgst) / 2
+  const xTotal = xH + xA
+
+  // ── H2H shortcuts ─────────────────────────────────────────────
+  const h2hOver15 = h2h && h2h.meetings >= 3 && h2h.over15Rate >= 0.6
+  const h2hOver25 = h2h && h2h.meetings >= 3 && h2h.over25Rate >= 0.6
+  const h2hBtts   = h2h && h2h.meetings >= 3 && h2h.bttsRate   >= 0.6
+
+  // ─────────────────────────────────────────────────────────────
+  // MARKET 1 — 1X2
+  // ─────────────────────────────────────────────────────────────
+  {
+    const h2hHomeBoost = h2h && h2h.meetings >= 3 && h2h.homeWinRate >= 0.5 ? Math.round(h2h.homeWinRate * 10) : 0
+    const h2hAwayBoost = h2h && h2h.meetings >= 3 && h2h.awayWinRate >= 0.5 ? Math.round(h2h.awayWinRate * 10) : 0
+    const formHomeBoost = homeForm >= 10 ? 4 : homeForm <= 3 ? -4 : 0
+    const formAwayBoost = awayForm >= 10 ? 4 : awayForm <= 3 ? -4 : 0
+
+    let pick: PickType
+    let predLabel: string
+    let confidence: number
+    const reasoning: string[] = []
+
+    if (diff >= 20) {
+      pick = 'HOME_WIN'; predLabel = homeName
+      confidence = Math.min(84, 54 + Math.floor(diff / 2) + h2hHomeBoost + formHomeBoost)
+      reasoning.push(`${homeName} clear favourites — ${ptsDiff} pts ahead, ${posDiff} places higher`)
+      reasoning.push(`Form — ${homeName}: ${homeFormStr}`)
+      if (h2h && h2h.meetings >= 3) reasoning.push(`H2H: ${Math.round(h2h.homeWinRate * h2h.meetings)}W/${h2h.meetings} for ${homeName}`)
+    } else if (diff >= 8) {
+      pick = 'HOME_WIN'; predLabel = homeName
+      confidence = Math.min(78, 50 + Math.floor(diff / 2) + h2hHomeBoost + formHomeBoost)
+      reasoning.push(`${homeName} moderate home advantage — form: ${homeFormStr}`)
+    } else if (diff <= -20) {
+      pick = 'AWAY_WIN'; predLabel = awayName
+      confidence = Math.min(83, 52 + Math.floor(Math.abs(diff) / 2) + h2hAwayBoost + formAwayBoost)
+      reasoning.push(`${awayName} clearly the better side despite playing away`)
+      reasoning.push(`Form — ${awayName}: ${awayFormStr}`)
+      if (h2h && h2h.meetings >= 3) reasoning.push(`H2H: ${Math.round(h2h.awayWinRate * h2h.meetings)}W/${h2h.meetings} for ${awayName}`)
+    } else if (diff <= -8) {
+      pick = 'AWAY_WIN'; predLabel = awayName
+      confidence = Math.min(77, 48 + Math.floor(Math.abs(diff) / 2) + h2hAwayBoost + formAwayBoost)
+      reasoning.push(`${awayName} strong away — form: ${awayFormStr}`)
+    } else {
+      // balanced match — predict draw
+      pick = 'DRAW'; predLabel = 'Draw'
+      const drawH2hBoost = h2h && h2h.meetings >= 3 && h2h.drawRate >= 0.4 ? Math.round(h2h.drawRate * 12) : 0
+      confidence = Math.min(72, 52 + drawH2hBoost)
+      reasoning.push(`Balanced match — ${homeName} vs ${awayName} closely matched`)
+      reasoning.push(`Form — ${homeName}: ${homeFormStr} | ${awayName}: ${awayFormStr}`)
+      if (h2h && h2h.meetings >= 3 && h2h.drawRate >= 0.3) {
+        reasoning.push(`H2H: ${Math.round(h2h.drawRate * h2h.meetings)} draws in last ${h2h.meetings} meetings`)
+      }
+    }
+
+    markets.push({ marketType: '1X2', pick, predLabel, confidence, reasoning })
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // MARKET 2 — GG (BTTS)
+  // ─────────────────────────────────────────────────────────────
+  {
+    const bothAttack = hAvgFor >= 1.2 && aAvgFor >= 1.0
+    const bothLeaky  = hAvgAgst >= 1.1 && aAvgAgst >= 1.1
+    const bttsProbable = h2hBtts || (bothAttack && bothLeaky)
+
+    let pick: PickType
+    let predLabel: string
+    let confidence: number
+    const reasoning: string[] = []
+
+    if (bttsProbable) {
+      pick = 'BTTS'; predLabel = 'Yes'
+      const h2hBoost = h2hBtts ? 7 : 0
+      confidence = Math.min(82, 58 + Math.round((xTotal - 2.3) * 8) + h2hBoost)
+      if (h2hBtts && h2h) reasoning.push(`H2H: BTTS in ${(h2h.bttsRate * 100).toFixed(0)}% of last ${h2h.meetings} meetings`)
+      reasoning.push(`${homeName} scores ${hAvgFor.toFixed(1)}/g, concedes ${hAvgAgst.toFixed(1)}/g`)
+      reasoning.push(`${awayName} scores ${aAvgFor.toFixed(1)}/g, concedes ${aAvgAgst.toFixed(1)}/g`)
+    } else {
+      pick = 'NO_BTTS'; predLabel = 'No'
+      // Increase confidence if one team has a solid defence
+      const defenceBoost = (hAvgAgst <= 0.9 || aAvgAgst <= 0.9) ? 8 : 0
+      confidence = Math.min(78, 56 + defenceBoost)
+      if (hAvgAgst <= 0.9) reasoning.push(`${homeName} keeps clean sheets — ${hAvgAgst.toFixed(1)} conceded/g`)
+      if (aAvgAgst <= 0.9) reasoning.push(`${awayName} solid defence — ${aAvgAgst.toFixed(1)} conceded/g`)
+      if (hAvgFor <= 0.9) reasoning.push(`${homeName} low scoring — ${hAvgFor.toFixed(1)} goals/g`)
+      if (aAvgFor <= 0.9) reasoning.push(`${awayName} low scoring — ${aAvgFor.toFixed(1)} goals/g`)
+      if (reasoning.length === 0) reasoning.push(`Not expecting both teams to score — defensive match`)
+    }
+
+    markets.push({ marketType: 'GG', pick, predLabel, confidence, reasoning })
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // MARKET 3 — Over/Under 1.5
+  // ─────────────────────────────────────────────────────────────
+  {
+    const homeScoringTeam = hAvgFor >= 1.3
+    const awayScoringTeam = aAvgFor >= 1.1
+    const goalsProbable = h2hOver15
+      || (xTotal >= 2.6 && (homeScoringTeam || awayScoringTeam))
+      || (xTotal >= 2.4 && homeScoringTeam && awayScoringTeam)
+
+    let pick: PickType
+    let predLabel: string
+    let confidence: number
+    const reasoning: string[] = []
+
+    if (goalsProbable) {
+      pick = 'OVER_1_5'; predLabel = 'Yes'
+      const h2hBoost = h2hOver15 ? 6 : 0
+      confidence = Math.min(84, 56 + Math.round((xTotal - 2.6) * 12) + h2hBoost)
+      if (h2hOver15 && h2h) reasoning.push(`H2H: 2+ goals in ${(h2h.over15Rate * 100).toFixed(0)}% of ${h2h.meetings} meetings`)
+      reasoning.push(`${xTotal.toFixed(1)} xG expected — goals likely`)
+      if (homeScoringTeam) reasoning.push(`${homeName} scores ${hAvgFor.toFixed(1)}/g`)
+      if (awayScoringTeam) reasoning.push(`${awayName} scores ${aAvgFor.toFixed(1)}/g`)
+    } else {
+      pick = 'UNDER_1_5'; predLabel = 'No'
+      confidence = Math.min(76, 58 + Math.round((2.4 - xTotal) * 10))
+      reasoning.push(`Low-scoring game expected — ${xTotal.toFixed(1)} xG`)
+      if (hAvgFor <= 0.9) reasoning.push(`${homeName} struggles to score (${hAvgFor.toFixed(1)}/g)`)
+      if (aAvgFor <= 0.9) reasoning.push(`${awayName} struggles to score (${aAvgFor.toFixed(1)}/g)`)
+      if (reasoning.length < 2) reasoning.push(`Both teams have solid defensive records`)
+    }
+
+    markets.push({ marketType: 'OVER_1_5', pick, predLabel, confidence, reasoning })
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // MARKET 4 — Over/Under 2.5
+  // ─────────────────────────────────────────────────────────────
+  {
+    const highScoring = h2hOver25
+      || (xTotal >= 3.1 && (hAvgFor >= 1.5 || aAvgFor >= 1.3))
+
+    let pick: PickType
+    let predLabel: string
+    let confidence: number
+    const reasoning: string[] = []
+
+    if (highScoring) {
+      pick = 'OVER_2_5'; predLabel = 'Over'
+      const h2hBoost = h2hOver25 ? 7 : 0
+      confidence = Math.min(82, 52 + Math.round((xTotal - 3.1) * 14) + h2hBoost)
+      if (h2hOver25 && h2h) reasoning.push(`H2H: 3+ goals in ${(h2h.over25Rate * 100).toFixed(0)}% of ${h2h.meetings} meetings`)
+      reasoning.push(`High-scoring game expected — ${xTotal.toFixed(1)} xG`)
+      if (hAvgFor >= 1.5) reasoning.push(`${homeName} averages ${hAvgFor.toFixed(1)} goals/g`)
+      if (aAvgFor >= 1.3) reasoning.push(`${awayName} averages ${aAvgFor.toFixed(1)} goals/g`)
+    } else {
+      pick = 'UNDER_2_5'; predLabel = 'Under'
+      confidence = Math.min(78, 56 + Math.round((3.0 - xTotal) * 8))
+      reasoning.push(`Tight game expected — ${xTotal.toFixed(1)} xG, under 3 goals likely`)
+      if (hAvgAgst <= 1.0) reasoning.push(`${homeName} strong at the back (${hAvgAgst.toFixed(1)} conceded/g)`)
+      if (aAvgAgst <= 1.0) reasoning.push(`${awayName} solid defence (${aAvgAgst.toFixed(1)} conceded/g)`)
+      if (reasoning.length < 2) reasoning.push(`Neither attack dominant enough for 3+ goals`)
+    }
+
+    markets.push({ marketType: 'OVER_2_5', pick, predLabel, confidence, reasoning })
+  }
+
+  return markets
+}
+
+/**
+ * Select the top N most interesting matches and return all 4 markets for each.
+ * "Most interesting" = clearest signal (largest |diff| between home and away).
+ */
+export function selectTopMatches(
+  fixtures: Fixture[],
+  standingsMap: Map<string, TeamStanding[]>,
+  h2hMap: Map<number, H2HStats | null> = new Map(),
+  count = 6,
+  formMap: Map<number, string> = new Map()
+): MatchCardData[] {
+  const candidates: MatchCardData[] = []
+
+  for (const fixture of fixtures) {
+    const standings = standingsMap.get(fixture.competition.code) || []
+    let homeStanding = standings.find(s => s.team.id === fixture.homeTeam.id)
+    let awayStanding = standings.find(s => s.team.id === fixture.awayTeam.id)
+    if (!homeStanding || !awayStanding) continue
+
+    if (!homeStanding.form && formMap.has(fixture.homeTeam.id)) {
+      homeStanding = { ...homeStanding, form: formMap.get(fixture.homeTeam.id) ?? null }
+    }
+    if (!awayStanding.form && formMap.has(fixture.awayTeam.id)) {
+      awayStanding = { ...awayStanding, form: formMap.get(fixture.awayTeam.id) ?? null }
+    }
+
+    const h2h = h2hMap.get(fixture.id) ?? undefined
+    const markets = analyseMatchMarkets(fixture, homeStanding, awayStanding, h2h)
+
+    // Overall score = avg confidence across markets (proxy for how predictable the match is)
+    const overallScore = markets.reduce((s, m) => s + m.confidence, 0) / markets.length
+
+    candidates.push({ fixture, homeStanding, awayStanding, h2h, markets, overallScore })
+  }
+
+  // Sort by predictability, return top N
+  return candidates
+    .sort((a, b) => b.overallScore - a.overallScore)
+    .slice(0, count)
 }
