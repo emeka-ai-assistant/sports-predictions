@@ -111,9 +111,10 @@ function MarketRow({ pred, hasScore, homeScore, awayScore }: {
           {/* Accordion toggle */}
           <button
             onClick={() => setOpen(v => !v)}
-            className="flex-shrink-0 w-5 h-5 flex items-center justify-center text-gray-600 hover:text-gray-300 transition-colors"
+            className="flex-shrink-0 flex items-center gap-1 px-2 py-0.5 rounded bg-white/10 hover:bg-white/20 text-white text-xs font-semibold transition-colors"
           >
-            <span className={`text-xs transition-transform duration-200 ${open ? 'rotate-180' : ''}`}>▾</span>
+            {open ? 'Hide' : 'Details'}
+            <span className={`transition-transform duration-200 inline-block ${open ? 'rotate-180' : ''}`}>▾</span>
           </button>
         </div>
 
