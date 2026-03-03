@@ -434,23 +434,23 @@ function analyseMatchMarkets(
     const reasoning: string[] = []
 
     if (diff >= 20) {
-      pick = 'HOME_WIN'; predLabel = homeName
+      pick = 'HOME_WIN'; predLabel = `${homeName} to Win`
       confidence = Math.min(84, 54 + Math.floor(diff / 2) + h2hHomeBoost + formHomeBoost)
       reasoning.push(`${homeName} clear favourites — ${ptsDiff} pts ahead, ${posDiff} places higher`)
       reasoning.push(`Form — ${homeName}: ${homeFormStr}`)
       if (h2h && h2h.meetings >= 3) reasoning.push(`H2H: ${Math.round(h2h.homeWinRate * h2h.meetings)}W/${h2h.meetings} for ${homeName}`)
     } else if (diff >= 8) {
-      pick = 'HOME_WIN'; predLabel = homeName
+      pick = 'HOME_WIN'; predLabel = `${homeName} to Win`
       confidence = Math.min(78, 50 + Math.floor(diff / 2) + h2hHomeBoost + formHomeBoost)
       reasoning.push(`${homeName} moderate home advantage — form: ${homeFormStr}`)
     } else if (diff <= -20) {
-      pick = 'AWAY_WIN'; predLabel = awayName
+      pick = 'AWAY_WIN'; predLabel = `${awayName} to Win`
       confidence = Math.min(83, 52 + Math.floor(Math.abs(diff) / 2) + h2hAwayBoost + formAwayBoost)
       reasoning.push(`${awayName} clearly the better side despite playing away`)
       reasoning.push(`Form — ${awayName}: ${awayFormStr}`)
       if (h2h && h2h.meetings >= 3) reasoning.push(`H2H: ${Math.round(h2h.awayWinRate * h2h.meetings)}W/${h2h.meetings} for ${awayName}`)
     } else if (diff <= -8) {
-      pick = 'AWAY_WIN'; predLabel = awayName
+      pick = 'AWAY_WIN'; predLabel = `${awayName} to Win`
       confidence = Math.min(77, 48 + Math.floor(Math.abs(diff) / 2) + h2hAwayBoost + formAwayBoost)
       reasoning.push(`${awayName} strong away — form: ${awayFormStr}`)
     } else {
@@ -482,14 +482,14 @@ function analyseMatchMarkets(
     const reasoning: string[] = []
 
     if (bttsProbable) {
-      pick = 'BTTS'; predLabel = 'Yes'
+      pick = 'BTTS'; predLabel = 'Both Teams to Score'
       const h2hBoost = h2hBtts ? 7 : 0
       confidence = Math.min(82, 58 + Math.round((xTotal - 2.3) * 8) + h2hBoost)
       if (h2hBtts && h2h) reasoning.push(`H2H: BTTS in ${(h2h.bttsRate * 100).toFixed(0)}% of last ${h2h.meetings} meetings`)
       reasoning.push(`${homeName} scores ${hAvgFor.toFixed(1)}/g, concedes ${hAvgAgst.toFixed(1)}/g`)
       reasoning.push(`${awayName} scores ${aAvgFor.toFixed(1)}/g, concedes ${aAvgAgst.toFixed(1)}/g`)
     } else {
-      pick = 'NO_BTTS'; predLabel = 'No'
+      pick = 'NO_BTTS'; predLabel = 'No BTTS'
       // Increase confidence if one team has a solid defence
       const defenceBoost = (hAvgAgst <= 0.9 || aAvgAgst <= 0.9) ? 8 : 0
       confidence = Math.min(78, 56 + defenceBoost)
@@ -519,7 +519,7 @@ function analyseMatchMarkets(
     const reasoning: string[] = []
 
     if (goalsProbable) {
-      pick = 'OVER_1_5'; predLabel = 'Yes'
+      pick = 'OVER_1_5'; predLabel = 'Over 1.5 Goals'
       const h2hBoost = h2hOver15 ? 6 : 0
       confidence = Math.min(84, 56 + Math.round((xTotal - 2.6) * 12) + h2hBoost)
       if (h2hOver15 && h2h) reasoning.push(`H2H: 2+ goals in ${(h2h.over15Rate * 100).toFixed(0)}% of ${h2h.meetings} meetings`)
@@ -527,7 +527,7 @@ function analyseMatchMarkets(
       if (homeScoringTeam) reasoning.push(`${homeName} scores ${hAvgFor.toFixed(1)}/g`)
       if (awayScoringTeam) reasoning.push(`${awayName} scores ${aAvgFor.toFixed(1)}/g`)
     } else {
-      pick = 'UNDER_1_5'; predLabel = 'No'
+      pick = 'UNDER_1_5'; predLabel = 'Under 1.5 Goals'
       confidence = Math.min(76, 58 + Math.round((2.4 - xTotal) * 10))
       reasoning.push(`Low-scoring game expected — ${xTotal.toFixed(1)} xG`)
       if (hAvgFor <= 0.9) reasoning.push(`${homeName} struggles to score (${hAvgFor.toFixed(1)}/g)`)
@@ -551,7 +551,7 @@ function analyseMatchMarkets(
     const reasoning: string[] = []
 
     if (highScoring) {
-      pick = 'OVER_2_5'; predLabel = 'Over'
+      pick = 'OVER_2_5'; predLabel = 'Over 2.5 Goals'
       const h2hBoost = h2hOver25 ? 7 : 0
       confidence = Math.min(82, 52 + Math.round((xTotal - 3.1) * 14) + h2hBoost)
       if (h2hOver25 && h2h) reasoning.push(`H2H: 3+ goals in ${(h2h.over25Rate * 100).toFixed(0)}% of ${h2h.meetings} meetings`)
@@ -559,7 +559,7 @@ function analyseMatchMarkets(
       if (hAvgFor >= 1.5) reasoning.push(`${homeName} averages ${hAvgFor.toFixed(1)} goals/g`)
       if (aAvgFor >= 1.3) reasoning.push(`${awayName} averages ${aAvgFor.toFixed(1)} goals/g`)
     } else {
-      pick = 'UNDER_2_5'; predLabel = 'Under'
+      pick = 'UNDER_2_5'; predLabel = 'Under 2.5 Goals'
       confidence = Math.min(78, 56 + Math.round((3.0 - xTotal) * 8))
       reasoning.push(`Tight game expected — ${xTotal.toFixed(1)} xG, under 3 goals likely`)
       if (hAvgAgst <= 1.0) reasoning.push(`${homeName} strong at the back (${hAvgAgst.toFixed(1)} conceded/g)`)

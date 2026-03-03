@@ -39,12 +39,12 @@ function getActualLabel(pick: PickType, homeScore: number, awayScore: number): s
     case 'HOME_WIN':  return homeScore > awayScore ? 'Home Win' : homeScore === awayScore ? 'Draw' : 'Away Win'
     case 'AWAY_WIN':  return awayScore > homeScore ? 'Away Win' : homeScore === awayScore ? 'Draw' : 'Home Win'
     case 'DRAW':      return homeScore === awayScore ? 'Draw' : homeScore > awayScore ? 'Home Win' : 'Away Win'
-    case 'BTTS':      return homeScore >= 1 && awayScore >= 1 ? 'Yes' : 'No'
-    case 'NO_BTTS':   return !(homeScore >= 1 && awayScore >= 1) ? 'No' : 'Yes'
-    case 'OVER_1_5':  return total >= 2 ? 'Yes' : 'No'
-    case 'UNDER_1_5': return total < 2  ? 'No'  : 'Yes'
-    case 'OVER_2_5':  return total >= 3 ? 'Over' : 'Under'
-    case 'UNDER_2_5': return total < 3  ? 'Under': 'Over'
+    case 'BTTS':      return homeScore >= 1 && awayScore >= 1 ? 'Both Teams Scored' : 'Not Both Teams'
+    case 'NO_BTTS':   return !(homeScore >= 1 && awayScore >= 1) ? 'No BTTS ✓' : 'Both Teams Scored'
+    case 'OVER_1_5':  return total >= 2 ? 'Over 1.5 Goals' : 'Under 1.5 Goals'
+    case 'UNDER_1_5': return total < 2  ? 'Under 1.5 Goals' : 'Over 1.5 Goals'
+    case 'OVER_2_5':  return total >= 3 ? 'Over 2.5 Goals' : 'Under 2.5 Goals'
+    case 'UNDER_2_5': return total < 3  ? 'Under 2.5 Goals' : 'Over 2.5 Goals'
     default:          return '—'
   }
 }
